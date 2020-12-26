@@ -2,19 +2,48 @@ syntax = "proto3";
 
 package kvraft;
 
-message GetRequest{
-
+message GetArgs{
+  string key = 1;
+  int64 client_id = 2;
+  int32 serial_num = 3;
 }
 
 message GetReply{
-
+  bool success = 1;
+  string msg = 2;
+  string val = 3;
 }
 
-message PutRequest{
-
+message PutArgs{
+  string key = 1;
+  string val = 2;
+  int64 client_id = 3;
+  int32 serial_num = 4;
 }
 
 message PutReply{
+  bool success = 1;
+  string msg = 2;
+}
 
+message DeleteArgs{
+  string key = 1;
+  int64 client_id = 2;
+  int32 serial_num = 3;
+}
+
+message DeleteReply{
+  bool success = 1;
+  string msg = 2;
+}
+
+message ScanArgs{
+  int64 start_timestamp = 1;
+  int64 client_id = 2;
+  int32 serial_num = 3;
+}
+
+message ScanReply{
+  
 }
 
