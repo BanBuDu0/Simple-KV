@@ -3,9 +3,29 @@ name = "simple-kv"
 version = "0.1.0"
 authors = ["syj <Sunyuejun_7@outlook.com>"]
 edition = "2018"
+build = "build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "proto"
+path = "src/proto/mod.rs"
+
+
+[[bin]]
+name = "server"
+path = "src/server.rs"
+
+[[bin]]
+name = "client"
+path = "src/client.rs"
+
+
 [dependencies]
-#grpcio = "0.6"
-#protobuf = { version = "2.0", optional = true }
+futures = "0.3.5"
+grpcio = "0.6"
+protobuf = "~2"
+
+[build-dependencies]
+protoc-grpcio = "3.0.0"
+#protoc-rust-grpc = "0.2.1"

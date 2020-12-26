@@ -25,7 +25,7 @@
 | TIME  | TODO                                       | CHECK |
 | ----- | :----------------------------------------- | ----- |
 | 12.25 | 整体项目思考                 | √     |
-| 12.26 | 学习rust和grpc-rs和raft-rs，编写grpc proto |       |
+| 12.26 | 学习rust和grpc-rs和raft-rs，编写grpc proto |  √       |
 | 12.27 | 编写client和server                         |       |
 | 12.28 | 编写client和server，编写WAL和Follower read |       |
 | 12.29 | Leader & Do benchmark                |       |
@@ -33,8 +33,3 @@
 
 ## RUN
 
-1. cargo install protobuf-codegen
-
-2. cargo install grpcio-compiler
-
-3. 

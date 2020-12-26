@@ -44,6 +44,17 @@ message ScanArgs{
 }
 
 message ScanReply{
-  
+
+}
+
+service KVRaft{
+  rpc Get (GetArgs) returns (GetReply) {
+  }
+  rpc Put (PutArgs) returns (PutReply) {
+  }
+  rpc Delete (DeleteArgs) returns (DeleteReply) {
+  }
+  rpc Scan (ScanArgs) returns (ScanReply) {
+  }
 }
 
