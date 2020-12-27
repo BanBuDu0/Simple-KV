@@ -19,6 +19,8 @@
 #![allow(unused_results)]
 //! Generated file from `kvraft.proto`
 
+use protobuf::Message;
+
 /// Generated files are compatible only with the same version
 /// of protobuf runtime.
 // const _PROTOBUF_VERSION_CHECK: () = ::protobuf::VERSION_2_18_1;

@@ -33,3 +33,5 @@
 
 ## RUN
 
++ cargo run --manifest-path Cargo.toml --bin server
++ cargo run --manifest-path Cargo.toml --bin client
