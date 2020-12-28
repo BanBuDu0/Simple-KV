@@ -1,5 +1,5 @@
 extern crate grpcio;
-extern crate proto;
+extern crate protos;
 
 use std::env;
 use std::sync::Arc;
