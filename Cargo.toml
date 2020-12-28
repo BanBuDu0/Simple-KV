@@ -22,18 +22,30 @@ path = "src/client.rs"
 
 
 [dependencies]
-futures = "0.3.5"
-grpcio = "0.6"
-protobuf = "2.8"
-quick-error = "1.2.3"
-raft = { version = "0.6.0-alpha", default-features = false }
-raft-proto = { version = "0.6.0-alpha", default-features = false }
-rand = "0.7.3"
-serde = "1.0"
-serde_derive = "1.0"
-serde_with = "1.4"
-slog = { version = "2.3", features = ["max_level_trace", "release_max_level_debug"] }
-slog-global = { version = "0.1", git = "https://github.com/breeswish/slog-global.git", rev = "d592f88e4dbba5eb439998463054f1a44fbf17b9" }
+#futures = { version = "0.3", features = ["thread-pool", "compat"] }
+#futures-executor = "0.3.1"
+#futures-util = { version = "0.3.1", default-features = false, features = ["io", "async-await"] }
+#grpcio = { version = "0.7", default-features = false, features = ["openssl-vendored"] }
+##grpcio = "0.6"
+#protobuf = "2.8"
+#quick-error = "1.2.3"
+#raft = { version = "0.6.0-alpha", default-features = false }
+#raft-proto = { version = "0.6.0-alpha", default-features = false }
+#rand = "0.7.3"
+#serde = "1.0"
+#serde_derive = "1.0"
+#serde_with = "1.4"
+#slog = { version = "2.3", features = ["max_level_trace", "release_max_level_debug"] }
+#slog-global = { version = "0.1", git = "https://github.com/breeswish/slog-global.git", rev = "d592f88e4dbba5eb439998463054f1a44fbf17b9" }
+
+
+futures = { version = "0.3", features = ["thread-pool", "compat"] }
+futures-executor = "0.3.1"
+futures-util = { version = "0.3.1", default-features = false, features = ["io", "async-await"] }
+raft-proto = "0.4.1"
+grpcio = "0.7.1"
+raft = "0.6.0-alpha"
+protobuf = "2.18.1"
 
 
 [build-dependencies]
