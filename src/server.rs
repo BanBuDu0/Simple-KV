@@ -3,21 +3,25 @@ extern crate grpcio;
 extern crate proto;
 
 use std::{io, thread};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::Read;
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
+use std::sync::mpsc::Receiver;
 use std::sync::Mutex;
 
 use futures::{FutureExt, TryFutureExt};
+use futures::channel::mpsc::Sender;
 use futures::channel::oneshot;
 use futures::executor::block_on;
 use futures::prelude::*;
 use grpcio::{Environment, RpcContext, ServerBuilder, UnarySink};
-// use raft::{
-//     Config,
-//     raw_node::RawNode,
-//     storage::MemStorage,
-// };
+use protobuf::{Message as PbMessage};
+use raft::{
+    Config,
+    raw_node::RawNode,
+    storage::MemStorage,
+};
+use raft_proto::eraftpb::*;
 
 use proto::kvraft::{DeleteArgs, GetArgs, PutArgs, ScanArgs};
 use proto::kvraft::{DeleteReply, GetReply, PutReply, ScanReply};
@@ -96,18 +100,8 @@ impl KvRaft for KvRaftService {
     }
 }
 
-// fn gen_raft_node() {
-//     let config = Config {
-//         id: 1,
-//         ..Default::default()
-//     };
-//     let storage = MemStorage::default();
-//     config.validate().unwrap();
-//     // let mut node = RawNode::new(&config, storage, vec![]).unwrap();
-// }
 
-fn main() {
-    // gen_raft_node();
+fn maintain_server() {
     let env = Arc::new(Environment::new(1));
     let kv_raft_server = KvRaftService::new();
     let service = kvraft_grpc::create_kv_raft(kv_raft_server);
@@ -128,4 +122,54 @@ fn main() {
     });
     let _ = block_on(rx);
     let _ = block_on(server.shutdown());
+}
+
+
+struct Node {
+    // None if the raft is not initialized.
+    raft_group: Option<RawNode<MemStorage>>,
+    my_mailbox: Receiver<Message>,
+    mailboxes: HashMap<u64, Sender<Message>>,
+    // Key-value pairs after applied. `MemStorage` only contains raft logs,
+    // so we need an additional storage engine.
+    kv_pairs: HashMap<u16, String>,
+}
+
+
+// fn gen_raft_node() {
+//     let config = Config {
+//         id: 1,
+//         ..Default::default()
+//     };
+//     let storage = MemStorage::default();
+//     let storage = HashMap::new();
+//     config.validate().unwrap();
+//     // We'll use the built-in `MemStorage`, but you will likely want your own.
+//     // Finally, create our Raft node!
+//     let mut node = RawNode::new(&config, storage).unwrap();
+//     // We will coax it into being the lead of a single node cluster for exploration.
+//     node.raft.become_leader();
+//
+//     const NUM_NODES: u32 = 3;
+//     // Create 5 mailboxes to send/receive messages. Every node holds a `Receiver` to receive
+//     // messages from others, and uses the respective `Sender` to send messages to others.
+//     let (mut tx_vec, mut rx_vec) = (Vec::new(), Vec::new());
+//     for _ in 0..NUM_NODES {
+//         let (tx, rx) = mpsc::channel();
+//         tx_vec.push(tx);
+//         rx_vec.push(rx);
+//     }
+//
+//     let (tx_stop, rx_stop) = mpsc::channel();
+//     let rx_stop = Arc::new(Mutex::new(rx_stop));
+//
+//     // let proposals = Arc::new(Mutex::new(VecDeque::<Proposal>::new()));
+//     let mut handles = Vec::new();
+//     for (i, rx) in rx_vec.into_iter().enumerate() {}
+//
+// }
+
+fn main() {
+    // gen_raft_node();
+    maintain_server();
 }
