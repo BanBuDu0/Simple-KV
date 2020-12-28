@@ -5,23 +5,26 @@ extern crate raft;
 extern crate raft_proto;
 #[macro_use]
 extern crate slog;
+extern crate slog_term;
 
-use std::{io, thread};
+use std::{io, str, thread};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
-use std::sync::{Arc, mpsc};
-use std::sync::mpsc::Receiver;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
+use std::time::{Duration, Instant};
 
 use futures::{FutureExt, TryFutureExt};
-use futures::channel::mpsc::Sender;
 use futures::channel::oneshot;
 use futures::executor::block_on;
-// use futures::prelude::*;
 use grpcio::{Environment, RpcContext, ServerBuilder, UnarySink};
 use protobuf::Message as PbMessage;
-use raft::{Config, raw_node::RawNode, storage::MemStorage};
+use raft::{Config, raw_node::RawNode};
+use raft::{prelude::*, StateRole};
+use raft::storage::MemStorage;
 use raft_proto::eraftpb::*;
+use regex::Regex;
+use slog::Drain;
 
 // use proto::eraftpb::*;
 use proto::kvraft::{DeleteArgs, GetArgs, PutArgs, ScanArgs};
@@ -33,9 +36,12 @@ const HOST: &str = "127.0.0.1";
 //server port
 const PORT: u16 = 5030;
 //raft node num
-const NUM_NODES: u32 = 5;
+const NUM_NODES: u32 = 3;
+const ERR_LEADER: String = String::from("ERROR WRONG LEADER");
+const ERR_KEY: String = String::from("ERROR NO KEY");
 
-#[derive(Clone)]
+
+
 struct KvRaftService {
     /**
     use to lock the concurrent read write
@@ -71,68 +77,7 @@ impl KvRaftService {
     }
 }
 
-/**
-implement KvRaft Method in KvRaftService
-**/
-impl KvRaft for KvRaftService {
-    fn get(&mut self, ctx: RpcContext, args: GetArgs, sink: UnarySink<GetReply>) {
-        println!("Received Get request {{ {:?} }}", args);
-        let mut get_reply = GetReply::new();
-        get_reply.set_msg(String::from(args.get_key().clone()));
-
-        let f = sink
-            .success(get_reply.clone())
-            .map_err(move |err| eprintln!("Failed to reply: {:?}", err))
-            .map(move |_| println!("Responded with GetReply {{ {:?} }}", get_reply));
-
-        ctx.spawn(f)
-    }
-
-    fn put(&mut self, ctx: RpcContext, req: PutArgs, sink: UnarySink<PutReply>) {
-        unimplemented!()
-    }
-
-    fn delete(&mut self, ctx: RpcContext, req: DeleteArgs, sink: UnarySink<DeleteReply>) {
-        unimplemented!()
-    }
-
-    fn scan(&mut self, ctx: RpcContext, req: ScanArgs, sink: UnarySink<ScanReply>) {
-        unimplemented!()
-    }
-}
-
-fn maintain_server() {
-    let env = Arc::new(Environment::new(1));
-    let kv_raft_server = KvRaftService::new();
-    let service = kvraft_grpc::create_kv_raft(kv_raft_server);
-    let mut server = ServerBuilder::new(env)
-        .register_service(service)
-        .bind(HOST, PORT)
-        .build()
-        .unwrap();
-    server.start();
-    for (ref host, port) in server.bind_addrs() {
-        println!("listening on {}:{}", host, port);
-    }
-    let (tx, rx) = oneshot::channel();
-    thread::spawn(move || {
-        println!("Press ENTER to exit...");
-        let _ = io::stdin().read(&mut [0]).unwrap();
-        tx.send(())
-    });
-    let _ = block_on(rx);
-    let _ = block_on(server.shutdown());
-}
-
-fn example_config(i: u64) -> Config {
-    Config {
-        id: i,
-        election_tick: 10,
-        heartbeat_tick: 3,
-        ..Default::default()
-    }
-}
-
+#[derive(Clone)]
 struct Node {
     // None if the raft is not initialized.
     raft_group: Option<RawNode<MemStorage>>,
@@ -142,9 +87,18 @@ struct Node {
     mailboxes: HashMap<u64, Sender<Message>>,
     // Key-value pairs after applied. `MemStorage` only contains raft logs,
     // so we need an additional storage engine.
-    kv_pairs: HashMap<u16, String>,
+    kv_pairs: HashMap<String, String>,
+
+    //store the last sequence num of each client
+    //use to ignore any operation that it has already sean
+    //key -> client id
+    //val -> last sequence id
+    client_last_seq: HashMap<i64, i32>,
 }
 
+/**
+Some initialize method
+**/
 impl Node {
     // Create a raft leader only with itself in its configuration.
     fn create_raft_leader(
@@ -170,6 +124,7 @@ impl Node {
             my_mailbox,
             mailboxes,
             kv_pairs: Default::default(),
+            client_last_seq: Default::default(),
         }
     }
 
@@ -183,6 +138,7 @@ impl Node {
             my_mailbox,
             mailboxes,
             kv_pairs: Default::default(),
+            client_last_seq: Default::default(),
         }
     }
 
@@ -289,40 +245,6 @@ fn propose(raft_group: &mut RawNode<MemStorage>, proposal: &mut Proposal) {
     }
 }
 
-
-// fn gen_raft_node() {
-//     let config = Config {
-//         id: 1,
-//         ..Default::default()
-//     };
-//     let storage = MemStorage::default();
-//     let storage = HashMap::new();
-//     config.validate().unwrap();
-//     // We'll use the built-in `MemStorage`, but you will likely want your own.
-//     // Finally, create our Raft node!
-//     let mut node = RawNode::new(&config, storage).unwrap();
-//     // We will coax it into being the lead of a single node cluster for exploration.
-//     node.raft.become_leader();
-//
-//     const NUM_NODES: u32 = 3;
-//     // Create 5 mailboxes to send/receive messages. Every node holds a `Receiver` to receive
-//     // messages from others, and uses the respective `Sender` to send messages to others.
-//     let (mut tx_vec, mut rx_vec) = (Vec::new(), Vec::new());
-//     for _ in 0..NUM_NODES {
-//         let (tx, rx) = mpsc::channel();
-//         tx_vec.push(tx);
-//         rx_vec.push(rx);
-//     }
-//
-//     let (tx_stop, rx_stop) = mpsc::channel();
-//     let rx_stop = Arc::new(Mutex::new(rx_stop));
-//
-//     // let proposals = Arc::new(Mutex::new(VecDeque::<Proposal>::new()));
-//     let mut handles = Vec::new();
-//     for (i, rx) in rx_vec.into_iter().enumerate() {}
-//
-// }
-
 fn maintain_raft_state_machine() {
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
@@ -332,7 +254,8 @@ fn maintain_raft_state_machine() {
         .build()
         .fuse();
     let logger = slog::Logger::root(drain, o!());
-    // Create 5 mailboxes to send/receive messages. Every node holds a `Receiver` to receive
+
+    // Create NUM_NODES mailboxes to send/receive messages. Every node holds a `Receiver` to receive
     // messages from others, and uses the respective `Sender` to send messages to others.
     let (mut tx_vec, mut rx_vec) = (Vec::new(), Vec::new());
     for _ in 0..NUM_NODES {
@@ -340,11 +263,366 @@ fn maintain_raft_state_machine() {
         tx_vec.push(tx);
         rx_vec.push(rx);
     }
+
+    let (tx_stop, rx_stop) = mpsc::channel();
+    let rx_stop = Arc::new(Mutex::new(rx_stop));
+
+    // A global pending proposals queue. New proposals will be pushed back into the queue, and
+    // after it's committed by the raft cluster, it will be poped from the queue.
+    let proposals = Arc::new(Mutex::new(VecDeque::<Proposal>::new()));
+
+    //保存了每个raft node的处理线程
+    let mut handles = Vec::new();
+
+    // init NUM_NODES Raft node
+    for (i, rx) in rx_vec.into_iter().enumerate() {
+        // A map[peer_id -> sender]. In the example we create 5 nodes, with ids in [1, 5].
+        let mailboxes = (1..4u64).zip(tx_vec.iter().cloned()).collect();
+        let mut node = match i {
+            // Peer 1 is the leader.
+            0 => Node::create_raft_leader(1, rx, mailboxes, &logger),
+            // Other peers are followers.
+            _ => Node::create_raft_follower(rx, mailboxes),
+        };
+
+        let proposals = Arc::clone(&proposals);
+        // Tick the raft node per 100ms. So use an `Instant` to trace it.
+        let mut t = Instant::now();
+
+        // Clone the stop receiver
+        let rx_stop_clone = Arc::clone(&rx_stop);
+        let logger = logger.clone();
+
+        // Here we spawn the node on a new thread and keep a handle so we can join on them later.
+        let handle = thread::spawn(move ||
+            loop {
+                thread::sleep(Duration::from_millis(10));
+                loop {
+                    // Step raft messages.
+                    match node.my_mailbox.try_recv() {
+                        Ok(msg) => node.step(msg, &logger),
+                        Err(TryRecvError::Empty) => break,
+                        Err(TryRecvError::Disconnected) => return,
+                    }
+                }
+
+                let raft_group = match node.raft_group {
+                    Some(ref mut r) => r,
+                    // When Node::raft_group is `None` it means the node is not initialized.
+                    _ => continue,
+                };
+
+                if t.elapsed() >= Duration::from_millis(100) {
+                    raft_group.tick();
+                    t = Instant::now();
+                }
+
+                // Let the leader pick pending proposals from the global queue.
+                if raft_group.raft.state == StateRole::Leader {
+                    // Handle new proposals.
+                    let mut proposals = proposals.lock().unwrap();
+                    for p in proposals.iter_mut().skip_while(|p| p.proposed > 0) {
+                        propose(raft_group, p);
+                    }
+                }
+
+                // Handle readies from the raft.
+                on_ready(
+                    raft_group,
+                    &mut node.kv_pairs,
+                    &node.mailboxes,
+                    &proposals,
+                    &logger,
+                );
+
+                // Check control signals from
+                if check_signals(&rx_stop_clone) {
+                    return;
+                };
+            });
+        handles.push(handle);
+
+        let env = Arc::new(Environment::new(1));
+        // let kv_raft_server = KvRaftService::new();
+        let service = kvraft_grpc::create_kv_raft(node);
+        // let service = kvraft_grpc::create_kv_raft(kv_raft_server);
+        let mut server = ServerBuilder::new(env)
+            .register_service(service)
+            .bind(HOST, PORT)
+            .build()
+            .unwrap();
+        server.start();
+        for (ref host, port) in server.bind_addrs() {
+            println!("listening on {}:{}", host, port);
+        }
+        let (tx, rx) = oneshot::channel();
+        thread::spawn(move || {
+            println!("Press ENTER to exit...");
+            let _ = io::stdin().read(&mut [0]).unwrap();
+            tx.send(())
+        });
+        let _ = block_on(rx);
+        let _ = block_on(server.shutdown());
+    }
+
+
+    // Propose some conf changes so that followers can be initialized.
+    add_all_followers(proposals.as_ref());
+    // Put 100 key-value pairs.
+    info!(
+        logger,
+        "We get a 3 nodes Raft cluster now, now propose 100 proposals"
+    );
 }
 
+/**
+start grpc server for client
+**/
+fn maintain_server(n: &Node) {
+    let env = Arc::new(Environment::new(1));
+    // let kv_raft_server = KvRaftService::new();
+    let service = kvraft_grpc::create_kv_raft(n);
+    // let service = kvraft_grpc::create_kv_raft(kv_raft_server);
+    let mut server = ServerBuilder::new(env)
+        .register_service(service)
+        .bind(HOST, PORT)
+        .build()
+        .unwrap();
+    server.start();
+    for (ref host, port) in server.bind_addrs() {
+        println!("listening on {}:{}", host, port);
+    }
+    let (tx, rx) = oneshot::channel();
+    thread::spawn(move || {
+        println!("Press ENTER to exit...");
+        let _ = io::stdin().read(&mut [0]).unwrap();
+        tx.send(())
+    });
+    let _ = block_on(rx);
+    let _ = block_on(server.shutdown());
+}
+
+/**
+implement KvRaft Method in KvRaftService
+**/
+impl KvRaft for Node {
+    fn get(&mut self, ctx: RpcContext, args: GetArgs, sink: UnarySink<GetReply>) {
+        println!("Received Get request {{ {:?} }}", args);
+        let mut get_reply = GetReply::new();
+
+        let is_leader = wait_opertaion();
+
+        if !is_leader {
+            get_reply.set_success(false);
+            get_reply.set_msg(String::from(ERR_LEADER));
+        } else {
+            if let Some(val) = self.kv_pairs.get(args.get_key().clone()) {
+                get_reply.set_success(true);
+                get_reply.set_val(val.to_string().clone());
+            } else {
+                get_reply.set_success(false);
+                get_reply.set_val(String::from(ERR_KEY));
+            }
+        }
+
+        let f = sink
+            .success(get_reply.clone())
+            .map_err(move |err| eprintln!("Failed to reply: {:?}", err))
+            .map(move |_| println!("Responded with GetReply {{ {:?} }}", get_reply));
+        ctx.spawn(f)
+    }
+
+    fn put(&mut self, ctx: RpcContext, args: PutArgs, sink: UnarySink<PutReply>) {
+        println!("Received Put request {{ {:?} }}", args);
+        let mut put_reply = PutReply::new();
+
+        let is_leader = wait_opertaion();
+        if is_leader {
+            put_reply.set_success(false);
+            put_reply.set_msg(ERR_LEADER);
+        } else {
+            put_reply.set_success(true);
+        }
+
+        let f = sink.success(put_reply.clone())
+            .map_err(move |err| eprintln!("Failed to reply: {:?}", err))
+            .map(move |_| println!("Responded with GetReply {{ {:?} }}", put_reply));
+        ctx.spawn(f)
+    }
+
+    fn delete(&mut self, ctx: RpcContext, args: DeleteArgs, sink: UnarySink<DeleteReply>) {
+        println!("Received Put request {{ {:?} }}", args);
+        let mut delete_reply = DeleteReply::new();
+
+        let is_leader = wait_opertaion();
+        if is_leader {
+            delete_reply.set_success(false);
+            delete_reply.set_msg(ERR_LEADER);
+        } else {
+            delete_reply.set_success(true);
+        }
+
+        let f = sink.success(delete_reply.clone())
+            .map_err(move |err| eprintln!("Failed to reply: {:?}", err))
+            .map(move |_| println!("Responded with GetReply {{ {:?} }}", delete_reply));
+
+        ctx.spawn(f)
+    }
+
+    fn scan(&mut self, ctx: RpcContext, req: ScanArgs, sink: UnarySink<ScanReply>) {
+        unimplemented!()
+    }
+}
+
+fn wait_opertaion() -> bool {
+    //TODO Wtire Opertaion to proposals queue
+    thread::sleep(Duration::from_millis(1000));
+    unimplemented!()
+}
+
+fn example_config(i: u64) -> Config {
+    Config {
+        id: i,
+        election_tick: 10,
+        heartbeat_tick: 3,
+        ..Default::default()
+    }
+}
+
+fn on_ready(
+    raft_group: &mut RawNode<MemStorage>,
+    kv_pairs: &mut HashMap<String, String>,
+    mailboxes: &HashMap<u64, Sender<Message>>,
+    proposals: &Mutex<VecDeque<Proposal>>,
+    logger: &slog::Logger,
+) {
+    if !raft_group.has_ready() {
+        return;
+    }
+    let store = raft_group.raft.raft_log.store.clone();
+    // Get the `Ready` with `RawNode::ready` interface.
+    let mut ready = raft_group.ready();
+
+    let handle_messages = |msgs: Vec<Vec<Message>>| {
+        for vec_msg in msgs {
+            for msg in vec_msg {
+                let to = msg.to;
+                if mailboxes[&to].send(msg).is_err() {
+                    error!(
+                        logger,
+                        "send raft message to {} fail, let Raft retry it", to
+                    );
+                }
+            }
+        }
+    };
+
+    // Send out the messages come from the node.
+    handle_messages(ready.take_messages());
+
+    // Apply the snapshot. It's necessary because in `RawNode::advance` we stabilize the snapshot.
+    if *ready.snapshot() != Snapshot::default() {
+        let s = ready.snapshot().clone();
+        if let Err(e) = store.wl().apply_snapshot(s) {
+            error!(
+                logger,
+                "apply snapshot fail: {:?}, need to retry or panic", e
+            );
+            return;
+        }
+    }
+
+    let mut handle_committed_entries =
+        |rn: &mut RawNode<MemStorage>, committed_entries: Vec<Entry>| {
+            for entry in committed_entries {
+                if entry.data.is_empty() {
+                    // From new elected leaders.
+                    continue;
+                }
+                if let EntryType::EntryConfChange = entry.get_entry_type() {
+                    // For conf change messages, make them effective.
+                    let mut cc = ConfChange::default();
+                    cc.merge_from_bytes(&entry.data).unwrap();
+                    let cs = rn.apply_conf_change(&cc).unwrap();
+                    store.wl().set_conf_state(cs);
+                } else {
+                    // For normal proposals, extract the key-value pair and then
+                    // insert them into the kv engine.
+                    let data = str::from_utf8(&entry.data).unwrap();
+                    // let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
+                    let reg = Regex::new("put (.+) (.+)").unwrap();
+                    if let Some(caps) = reg.captures(&data) {
+                        // kv_pairs.insert(caps[1].parse().unwrap(), caps[2].to_string());
+                        kv_pairs.insert(caps[1].to_string(), caps[2].to_string());
+                    }
+                }
+                if rn.raft.state == StateRole::Leader {
+                    // The leader should response to the clients, tell them if their proposals
+                    // succeeded or not.
+                    let proposal = proposals.lock().unwrap().pop_front().unwrap();
+                    proposal.propose_success.send(true).unwrap();
+                }
+            }
+        };
+    // Apply all committed entries.
+    handle_committed_entries(raft_group, ready.take_committed_entries());
+
+    // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
+    // raft logs to the latest position.
+    if let Err(e) = store.wl().append(ready.entries()) {
+        error!(
+            logger,
+            "persist raft log fail: {:?}, need to retry or panic", e
+        );
+        return;
+    }
+
+    if let Some(hs) = ready.hs() {
+        // Raft HardState changed, and we need to persist it.
+        store.wl().set_hardstate(hs.clone());
+    }
+
+    // Call `RawNode::advance` interface to update position flags in the raft.
+    let mut light_rd = raft_group.advance(ready);
+    // Send out the messages.
+    handle_messages(light_rd.take_messages());
+    // Apply all committed entries.
+    handle_committed_entries(raft_group, light_rd.take_committed_entries());
+    // Advance the apply index.
+    raft_group.advance_apply();
+}
+
+enum Signal {
+    Terminate,
+}
+
+
+fn check_signals(receiver: &Arc<Mutex<mpsc::Receiver<Signal>>>) -> bool {
+    match receiver.lock().unwrap().try_recv() {
+        Ok(Signal::Terminate) => true,
+        Err(TryRecvError::Empty) => false,
+        Err(TryRecvError::Disconnected) => true,
+    }
+}
+
+// Proposes some conf change for peers [2, 5].
+fn add_all_followers(proposals: &Mutex<VecDeque<Proposal>>) {
+    for i in 2..4u64 {
+        let mut conf_change = ConfChange::default();
+        conf_change.node_id = i;
+        conf_change.set_change_type(ConfChangeType::AddNode);
+        loop {
+            let (proposal, rx) = Proposal::conf_change(&conf_change);
+            proposals.lock().unwrap().push_back(proposal);
+            if rx.recv().unwrap() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+}
+
+
 fn main() {
-    // let node = Node
-    // gen_raft_node();
     maintain_raft_state_machine();
-    maintain_server();
 }

@@ -38,8 +38,14 @@ rand = "0.7.3"
 serde = "1.0"
 serde_derive = "1.0"
 serde_with = "1.4"
-slog = { version = "2.3", features = ["max_level_trace", "release_max_level_debug"] }
-slog-global = { version = "0.1", git = "https://github.com/breeswish/slog-global.git", rev = "d592f88e4dbba5eb439998463054f1a44fbf17b9" }
+regex = "1"
+slog = "2.2"
+slog-async = "2.3.0"
+slog-envlogger = "2.1.0"
+slog-stdlog = "4"
+slog-term = "2.4.0"
+#slog = { version = "2.3", features = ["max_level_trace", "release_max_level_debug"] }
+#slog-global = { version = "0.1", git = "https://github.com/breeswish/slog-global.git", rev = "d592f88e4dbba5eb439998463054f1a44fbf17b9" }
 raft = "0.6.0-alpha"
 raft-proto = "0.6.0-alpha"
 
