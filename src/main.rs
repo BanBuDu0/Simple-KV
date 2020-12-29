@@ -1,11 +1,8 @@
 fn main() {
     let s1 = String::from("hello");
-
-    let len = calculate_length(&s1);
-    if len {
-        println!("The length of '{}' is {}.", s1, len);
-    }
-    println!("false, The length of '{}' is {}.", s1, len);
+    let mut s2 = s1.clone();
+    s2.insert_str(1, "aa");
+    println!("'{}' ", s1);
 }
 
 fn calculate_length(s: &String) -> bool {

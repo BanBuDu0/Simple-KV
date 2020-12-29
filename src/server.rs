@@ -7,6 +7,7 @@ extern crate raft_proto;
 extern crate slog;
 extern crate slog_term;
 
+
 use std::{io, str, thread};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
@@ -41,7 +42,7 @@ const ERR_LEADER: String = String::from("ERROR WRONG LEADER");
 const ERR_KEY: String = String::from("ERROR NO KEY");
 
 
-
+#[derive(Clone)]
 struct KvRaftService {
     /**
     use to lock the concurrent read write
@@ -62,6 +63,15 @@ struct KvRaftService {
     val -> PutArgs.val
     **/
     db: HashMap<String, String>,
+    // Key-value pairs after applied. `MemStorage` only contains raft logs,
+    // so we need an additional storage engine.
+    kv_pairs: HashMap<String, String>,
+
+    /**
+    agree_chs, wait raft apply a proposal and notify the KvRaftService to reply client
+    **/
+    // agree_chs: HashMap<i64, Receiver<Proposal>>,
+    // node: RawNode<MemStorage>,
 }
 
 /**
@@ -71,13 +81,14 @@ impl KvRaftService {
     fn new() -> Self {
         Self {
             // mu: Mutex::new(KvRaftService),
-            client_last_seq: HashMap::new(),
+            client_last_seq: Default::default(),
             db: HashMap::new(),
+            kv_pairs: Default::default(),
         }
     }
 }
 
-#[derive(Clone)]
+
 struct Node {
     // None if the raft is not initialized.
     raft_group: Option<RawNode<MemStorage>>,
@@ -85,16 +96,9 @@ struct Node {
     my_mailbox: Receiver<Message>,
     // message sender
     mailboxes: HashMap<u64, Sender<Message>>,
-    // Key-value pairs after applied. `MemStorage` only contains raft logs,
-    // so we need an additional storage engine.
-    kv_pairs: HashMap<String, String>,
 
-    //store the last sequence num of each client
-    //use to ignore any operation that it has already sean
-    //key -> client id
-    //val -> last sequence id
-    client_last_seq: HashMap<i64, i32>,
 }
+//TODO 拆分raft Node 和 server
 
 /**
 Some initialize method
@@ -123,8 +127,7 @@ impl Node {
             raft_group,
             my_mailbox,
             mailboxes,
-            kv_pairs: Default::default(),
-            client_last_seq: Default::default(),
+            // kv_pairs: Default::default(),
         }
     }
 
@@ -137,8 +140,7 @@ impl Node {
             raft_group: None,
             my_mailbox,
             mailboxes,
-            kv_pairs: Default::default(),
-            client_last_seq: Default::default(),
+            // kv_pairs: Default::default(),
         }
     }
 
@@ -245,7 +247,7 @@ fn propose(raft_group: &mut RawNode<MemStorage>, proposal: &mut Proposal) {
     }
 }
 
-fn maintain_raft_state_machine() {
+fn maintain_raft_state_machine(kv_pairs: &mut HashMap<String, String>,) {
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
     let drain = slog_async::Async::new(drain)
@@ -329,7 +331,8 @@ fn maintain_raft_state_machine() {
                 // Handle readies from the raft.
                 on_ready(
                     raft_group,
-                    &mut node.kv_pairs,
+                    kv_pairs,
+                    // &mut node.kv_pairs,
                     &node.mailboxes,
                     &proposals,
                     &logger,
@@ -341,28 +344,6 @@ fn maintain_raft_state_machine() {
                 };
             });
         handles.push(handle);
-
-        let env = Arc::new(Environment::new(1));
-        // let kv_raft_server = KvRaftService::new();
-        let service = kvraft_grpc::create_kv_raft(node);
-        // let service = kvraft_grpc::create_kv_raft(kv_raft_server);
-        let mut server = ServerBuilder::new(env)
-            .register_service(service)
-            .bind(HOST, PORT)
-            .build()
-            .unwrap();
-        server.start();
-        for (ref host, port) in server.bind_addrs() {
-            println!("listening on {}:{}", host, port);
-        }
-        let (tx, rx) = oneshot::channel();
-        thread::spawn(move || {
-            println!("Press ENTER to exit...");
-            let _ = io::stdin().read(&mut [0]).unwrap();
-            tx.send(())
-        });
-        let _ = block_on(rx);
-        let _ = block_on(server.shutdown());
     }
 
 
@@ -378,11 +359,10 @@ fn maintain_raft_state_machine() {
 /**
 start grpc server for client
 **/
-fn maintain_server(n: &Node) {
+fn maintain_server() -> KvRaftService {
     let env = Arc::new(Environment::new(1));
-    // let kv_raft_server = KvRaftService::new();
-    let service = kvraft_grpc::create_kv_raft(n);
-    // let service = kvraft_grpc::create_kv_raft(kv_raft_server);
+    let kv_raft_server = KvRaftService::new();
+    let service = kvraft_grpc::create_kv_raft(&kv_raft_server);
     let mut server = ServerBuilder::new(env)
         .register_service(service)
         .bind(HOST, PORT)
@@ -400,12 +380,13 @@ fn maintain_server(n: &Node) {
     });
     let _ = block_on(rx);
     let _ = block_on(server.shutdown());
+    kv_raft_server
 }
 
 /**
 implement KvRaft Method in KvRaftService
 **/
-impl KvRaft for Node {
+impl KvRaft for KvRaftService {
     fn get(&mut self, ctx: RpcContext, args: GetArgs, sink: UnarySink<GetReply>) {
         println!("Received Get request {{ {:?} }}", args);
         let mut get_reply = GetReply::new();
@@ -624,5 +605,6 @@ fn add_all_followers(proposals: &Mutex<VecDeque<Proposal>>) {
 
 
 fn main() {
+    // let kv_raft = maintain_server();
     maintain_raft_state_machine();
 }
