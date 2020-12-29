@@ -67,11 +67,12 @@ struct KvRaftService {
     // so we need an additional storage engine.
     kv_pairs: HashMap<String, String>,
 
-    /**
-    agree_chs, wait raft apply a proposal and notify the KvRaftService to reply client
-    **/
+    // /**
+    // agree_chs, wait raft apply a proposal and notify the KvRaftService to reply client
+    // **/
     // agree_chs: HashMap<i64, Receiver<Proposal>>,
     // node: RawNode<MemStorage>,
+
 }
 
 /**
@@ -247,7 +248,7 @@ fn propose(raft_group: &mut RawNode<MemStorage>, proposal: &mut Proposal) {
     }
 }
 
-fn maintain_raft_state_machine(kv_pairs: &mut HashMap<String, String>,) {
+fn maintain_raft_state_machine(kv_pairs: &mut HashMap<String, String>) {
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
     let drain = slog_async::Async::new(drain)
@@ -605,6 +606,6 @@ fn add_all_followers(proposals: &Mutex<VecDeque<Proposal>>) {
 
 
 fn main() {
-    // let kv_raft = maintain_server();
-    maintain_raft_state_machine();
+    let mut kv_raft = maintain_server();
+    maintain_raft_state_machine(&mut kv_raft.kv_pairs);
 }
