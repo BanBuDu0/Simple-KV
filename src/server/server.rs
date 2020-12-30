@@ -190,7 +190,7 @@ impl KvRaft for KvRaftService {
     }
 
     fn delete(&mut self, ctx: RpcContext, args: DeleteArgs, sink: UnarySink<DeleteReply>) {
-        println!("Received Put request {{ {:?} }}", args);
+        println!("Received Delete request {{ {:?} }}", args);
         let mut delete_reply = DeleteReply::new();
 
         let (proposal, rx) = Proposal::normal(args.key.clone(), "".to_string());
@@ -198,9 +198,7 @@ impl KvRaft for KvRaftService {
 
         if rx.recv().unwrap() {
             delete_reply.set_success(true);
-            if let Some(val) = self.db.lock().unwrap().get(args.get_key().clone()) {
-                self.db.lock().unwrap().remove(&val.to_string());
-            }
+            self.db.lock().unwrap().remove(args.get_key().clone());
         } else {
             delete_reply.set_success(false);
             delete_reply.set_msg(String::from(ERR_LEADER));
