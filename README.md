@@ -12,6 +12,7 @@
 ## System Architecture
 
 ![SystemArchitecture.png](https://i.loli.net/2020/12/25/jCc1ukvneVWDfdI.png)
+
 + WAL Method
 
   Apply log的时候先写日志，再定时刷盘
@@ -26,7 +27,7 @@
 | ----- | :----------------------------------------- | ----- |
 | 12.25 | 整体项目思考                 | √     |
 | 12.26 | 学习rust和grpc-rs和raft-rs，编写grpc proto |  √       |
-| 12.27 | 编写client和server                         |       |
+| 12.27 | 编写client和server                         |   √     |
 | 12.28 | 编写client和server，编写WAL和Follower read |       |
 | 12.29 | Leader & Do benchmark                |       |
 | 12.30 | Deadline                                   |       |
@@ -34,11 +35,11 @@
 ## RUN
 
 + cargo run --manifest-path Cargo.toml --bin server
-+ cargo run --manifest-path Cargo.toml --bin client 34431
++ cargo run --manifest-path Cargo.toml --bin client
 
 ## mind
 
-Use ```agree_chs: HashMap<i64, Receiver<Proposal>>``` to save the client -> Proposal Receiver. When a Proposal
-is Applied, the Receiver will receive the Proposal, and notify the blocked grpc request.
+Use ```agree_chs: HashMap<i64, Receiver<Proposal>>``` to save the client -> Proposal Receiver. When a Proposal is
+Applied, the Receiver will receive the Proposal, and notify the blocked grpc request.
 
 

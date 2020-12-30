@@ -13,10 +13,12 @@ use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use encoding::Encoding;
 use futures::{FutureExt, TryFutureExt};
 use futures::channel::oneshot;
 use futures::executor::block_on;
 use grpcio::{Environment, RpcContext, ServerBuilder, UnarySink};
+use protobuf::RepeatedField;
 
 use proto::kvraft::{DeleteArgs, GetArgs, PutArgs, ScanArgs};
 use proto::kvraft::{DeleteReply, GetReply, PutReply, ScanReply};
@@ -49,7 +51,7 @@ struct KvRaftService {
     key -> PutArgs.key
     val -> PutArgs.val
     **/
-    db: Arc<Mutex<HashMap<String, String>>>,
+    db: Arc<Mutex<HashMap<i64, String>>>,
 
     // /**
     // agree_chs, wait raft apply a proposal and notify the KvRaftService to reply client
@@ -97,20 +99,21 @@ impl KvRaftService {
 start grpc server for client
 **/
 pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
-    (0..10u16)
-        .filter(|i| {
-            let (proposal, rx) = Proposal::normal(String::from(i.to_string()), "hello, world".to_owned());
-            proposals.lock().unwrap().push_back(proposal);
-            println!("\nproposal {}\n", i);
-            // After we got a response from `rx`, we can assume the put succeeded and following
-            // `get` operations can find the key-value pair.
-            rx.recv().unwrap()
-        })
-        .count();
+    // (0..10u16)
+    //     .filter(|i| {
+    //         let (proposal, rx) = Proposal::normal(String::from(i.to_string()), "hello, world".to_owned());
+    //         proposals.lock().unwrap().push_back(proposal);
+    //         println!("\nproposal {}\n", i);
+    //         // After we got a response from `rx`, we can assume the put succeeded and following
+    //         // `get` operations can find the key-value pair.
+    //         rx.recv().unwrap()
+    //     })
+    //     .count();
 
     let env = Arc::new(Environment::new(1));
     let mut kv_raft_server = KvRaftService::new();
     kv_raft_server.proposals = proposals;
+    read_persist();
     let service = kvraft_grpc::create_kv_raft(kv_raft_server);
     let mut server = ServerBuilder::new(env)
         .register_service(service)
@@ -131,6 +134,12 @@ pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
     let _ = block_on(server.shutdown());
 }
 
+fn read_persist() {
+}
+
+fn persist() {
+}
+
 /**
 implement KvRaft Method in KvRaftService
 **/
@@ -139,11 +148,11 @@ impl KvRaft for KvRaftService {
         println!("Received Get request {{ {:?} }}", args);
         let mut get_reply = GetReply::new();
 
-        let (proposal, rx) = Proposal::normal(args.key.clone(), "".to_string());
+        let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
         self.proposals.lock().unwrap().push_back(proposal);
 
         if rx.recv().unwrap() {
-            if let Some(val) = self.db.lock().unwrap().get(args.get_key().clone()) {
+            if let Some(val) = self.db.lock().unwrap().get(&args.get_key()) {
                 get_reply.set_success(true);
                 get_reply.set_val(val.to_string().clone());
             } else {
@@ -165,7 +174,7 @@ impl KvRaft for KvRaftService {
     fn put(&mut self, ctx: RpcContext, args: PutArgs, sink: UnarySink<PutReply>) {
         println!("Received Put request {{ {:?} }}", args);
         let mut put_reply = PutReply::new();
-        let (proposal, rx) = Proposal::normal(args.key.clone(), args.val.clone());
+        let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
         self.proposals.lock().unwrap().push_back(proposal);
 
         if rx.recv().unwrap() {
@@ -173,6 +182,7 @@ impl KvRaft for KvRaftService {
             let db = &mut self.db;
             db.lock().unwrap().insert(args.key.clone(), args.val.clone());
             // self.db.insert(args.key.clone(), args.val.clone());
+            persist();
         } else {
             put_reply.set_success(false);
             put_reply.set_msg(String::from(ERR_LEADER));
@@ -193,12 +203,13 @@ impl KvRaft for KvRaftService {
         println!("Received Delete request {{ {:?} }}", args);
         let mut delete_reply = DeleteReply::new();
 
-        let (proposal, rx) = Proposal::normal(args.key.clone(), "".to_string());
+        let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
         self.proposals.lock().unwrap().push_back(proposal);
 
         if rx.recv().unwrap() {
             delete_reply.set_success(true);
-            self.db.lock().unwrap().remove(args.get_key().clone());
+            self.db.lock().unwrap().remove(&args.get_key());
+            persist();
         } else {
             delete_reply.set_success(false);
             delete_reply.set_msg(String::from(ERR_LEADER));
@@ -211,7 +222,30 @@ impl KvRaft for KvRaftService {
         ctx.spawn(f)
     }
 
-    fn scan(&mut self, ctx: RpcContext, req: ScanArgs, sink: UnarySink<ScanReply>) {
-        unimplemented!()
+    fn scan(&mut self, ctx: RpcContext, args: ScanArgs, sink: UnarySink<ScanReply>) {
+        println!("Received Scan request {{ {:?} }}", args);
+        let mut scan_reply = ScanReply::new();
+
+        let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
+        self.proposals.lock().unwrap().push_back(proposal);
+        if rx.recv().unwrap() {
+            let mut res = Vec::new();
+            for (&key, _) in self.db.lock().unwrap().iter() {
+                if (key >= args.start_key && key < args.end_key) || args.start_key == -1 {
+                    res.push(key);
+                }
+            }
+            res.sort();
+            scan_reply.set_success(true);
+            scan_reply.set_keys(res);
+        } else {
+            scan_reply.set_success(true);
+            scan_reply.set_msg(String::from(ERR_LEADER));
+        }
+        let f = sink.success(scan_reply.clone())
+            .map_err(move |err| eprintln!("Failed to reply: {:?}", err))
+            .map(move |_| println!("Responded with GetReply {{ {:?} }}", scan_reply));
+
+        ctx.spawn(f)
     }
 }

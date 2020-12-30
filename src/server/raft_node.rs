@@ -40,7 +40,7 @@ pub struct Node {
 
     // Key-value pairs after applied. `MemStorage` only contains raft logs,
     // so we need an additional storage engine.
-    kv_pairs: HashMap<String, String>,
+    kv_pairs: HashMap<i64, String>,
 }
 
 /**
@@ -155,7 +155,7 @@ fn example_config(i: u64) -> Config {
 
 fn on_ready(
     raft_group: &mut RawNode<MemStorage>,
-    kv_pairs: &mut HashMap<String, String>,
+    kv_pairs: &mut HashMap<i64, String>,
     mailboxes: &HashMap<u64, Sender<Message>>,
     proposals: &Mutex<VecDeque<Proposal>>,
     logger: &slog::Logger,
@@ -213,11 +213,11 @@ fn on_ready(
                     // For normal proposals, extract the key-value pair and then
                     // insert them into the kv engine.
                     let data = str::from_utf8(&entry.data).unwrap();
-                    // let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
-                    let reg = Regex::new("put (.+) (.+)").unwrap();
+                    let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
+                    // let reg = Regex::new("put (.+) (.+)").unwrap();
                     if let Some(caps) = reg.captures(&data) {
-                        // kv_pairs.insert(caps[1].parse().unwrap(), caps[2].to_string());
-                        kv_pairs.insert(caps[1].to_string(), caps[2].to_string());
+                        kv_pairs.insert(caps[1].parse().unwrap(), caps[2].to_string());
+                        // kv_pairs.insert(caps[1].to_string(), caps[2].to_string());
                     }
                 }
                 if rn.raft.state == StateRole::Leader {

@@ -3,7 +3,7 @@ syntax = "proto3";
 package kvraft;
 
 message GetArgs{
-  string key = 1;
+  int64 key = 1;
   int64 client_id = 2;
   int32 serial_num = 3;
 }
@@ -15,7 +15,7 @@ message GetReply{
 }
 
 message PutArgs{
-  string key = 1;
+  int64 key = 1;
   string val = 2;
   int64 client_id = 3;
   int32 serial_num = 4;
@@ -27,7 +27,7 @@ message PutReply{
 }
 
 message DeleteArgs{
-  string key = 1;
+  int64 key = 1;
   int64 client_id = 2;
   int32 serial_num = 3;
 }
@@ -38,13 +38,16 @@ message DeleteReply{
 }
 
 message ScanArgs{
-  int64 start_timestamp = 1;
-  int64 client_id = 2;
-  int32 serial_num = 3;
+  int64 start_key = 1;
+  int64 end_key = 2;
+  int64 client_id = 3;
+  int32 serial_num = 4;
 }
 
 message ScanReply{
-
+  bool success = 1;
+  string msg = 2;
+  repeated int64 keys = 3;
 }
 
 service KVRaft{

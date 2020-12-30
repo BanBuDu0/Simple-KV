@@ -41,7 +41,7 @@ slog-stdlog = "4"
 slog-term = "2.4.0"
 raft = "0.6.0-alpha"
 raft-proto = "0.6.0-alpha"
-
+encoding = "0.2.33"
 
 [patch.crates-io]
 raft = { git = "https://github.com/tikv/raft-rs", branch = "master", default-features = false }

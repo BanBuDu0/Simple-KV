@@ -26,7 +26,7 @@
 #[derive(PartialEq,Clone,Default)]
 pub struct GetArgs {
     // message fields
-    pub key: ::std::string::String,
+    pub key: i64,
     pub client_id: i64,
     pub serial_num: i32,
     // special fields
@@ -45,30 +45,19 @@ impl GetArgs {
         ::std::default::Default::default()
     }
 
-    // string key = 1;
+    // int64 key = 1;
 
 
-    pub fn get_key(&self) -> &str {
-        &self.key
+    pub fn get_key(&self) -> i64 {
+        self.key
     }
     pub fn clear_key(&mut self) {
-        self.key.clear();
+        self.key = 0;
     }
 
     // Param is passed by value, moved
-    pub fn set_key(&mut self, v: ::std::string::String) {
+    pub fn set_key(&mut self, v: i64) {
         self.key = v;
-    }
-
-    // Mutable pointer to the field.
-    // If field is not initialized, it is initialized with default value first.
-    pub fn mut_key(&mut self) -> &mut ::std::string::String {
-        &mut self.key
-    }
-
-    // Take field
-    pub fn take_key(&mut self) -> ::std::string::String {
-        ::std::mem::replace(&mut self.key, ::std::string::String::new())
     }
 
     // int64 client_id = 2;
@@ -112,7 +101,11 @@ impl ::protobuf::Message for GetArgs {
             let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
                 1 => {
-                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.key)?;
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_int64()?;
+                    self.key = tmp;
                 },
                 2 => {
                     if wire_type != ::protobuf::wire_format::WireTypeVarint {
@@ -140,8 +133,8 @@ impl ::protobuf::Message for GetArgs {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
-        if !self.key.is_empty() {
-            my_size += ::protobuf::rt::string_size(1, &self.key);
+        if self.key != 0 {
+            my_size += ::protobuf::rt::value_size(1, self.key, ::protobuf::wire_format::WireTypeVarint);
         }
         if self.client_id != 0 {
             my_size += ::protobuf::rt::value_size(2, self.client_id, ::protobuf::wire_format::WireTypeVarint);
@@ -155,8 +148,8 @@ impl ::protobuf::Message for GetArgs {
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
-        if !self.key.is_empty() {
-            os.write_string(1, &self.key)?;
+        if self.key != 0 {
+            os.write_int64(1, self.key)?;
         }
         if self.client_id != 0 {
             os.write_int64(2, self.client_id)?;
@@ -202,7 +195,7 @@ impl ::protobuf::Message for GetArgs {
         static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
         descriptor.get(|| {
             let mut fields = ::std::vec::Vec::new();
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeInt64>(
                 "key",
                 |m: &GetArgs| { &m.key },
                 |m: &mut GetArgs| { &mut m.key },
@@ -233,7 +226,7 @@ impl ::protobuf::Message for GetArgs {
 
 impl ::protobuf::Clear for GetArgs {
     fn clear(&mut self) {
-        self.key.clear();
+        self.key = 0;
         self.client_id = 0;
         self.serial_num = 0;
         self.unknown_fields.clear();
@@ -491,7 +484,7 @@ impl ::protobuf::reflect::ProtobufValue for GetReply {
 #[derive(PartialEq,Clone,Default)]
 pub struct PutArgs {
     // message fields
-    pub key: ::std::string::String,
+    pub key: i64,
     pub val: ::std::string::String,
     pub client_id: i64,
     pub serial_num: i32,
@@ -511,30 +504,19 @@ impl PutArgs {
         ::std::default::Default::default()
     }
 
-    // string key = 1;
+    // int64 key = 1;
 
 
-    pub fn get_key(&self) -> &str {
-        &self.key
+    pub fn get_key(&self) -> i64 {
+        self.key
     }
     pub fn clear_key(&mut self) {
-        self.key.clear();
+        self.key = 0;
     }
 
     // Param is passed by value, moved
-    pub fn set_key(&mut self, v: ::std::string::String) {
+    pub fn set_key(&mut self, v: i64) {
         self.key = v;
-    }
-
-    // Mutable pointer to the field.
-    // If field is not initialized, it is initialized with default value first.
-    pub fn mut_key(&mut self) -> &mut ::std::string::String {
-        &mut self.key
-    }
-
-    // Take field
-    pub fn take_key(&mut self) -> ::std::string::String {
-        ::std::mem::replace(&mut self.key, ::std::string::String::new())
     }
 
     // string val = 2;
@@ -604,7 +586,11 @@ impl ::protobuf::Message for PutArgs {
             let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
                 1 => {
-                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.key)?;
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_int64()?;
+                    self.key = tmp;
                 },
                 2 => {
                     ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.val)?;
@@ -635,8 +621,8 @@ impl ::protobuf::Message for PutArgs {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
-        if !self.key.is_empty() {
-            my_size += ::protobuf::rt::string_size(1, &self.key);
+        if self.key != 0 {
+            my_size += ::protobuf::rt::value_size(1, self.key, ::protobuf::wire_format::WireTypeVarint);
         }
         if !self.val.is_empty() {
             my_size += ::protobuf::rt::string_size(2, &self.val);
@@ -653,8 +639,8 @@ impl ::protobuf::Message for PutArgs {
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
-        if !self.key.is_empty() {
-            os.write_string(1, &self.key)?;
+        if self.key != 0 {
+            os.write_int64(1, self.key)?;
         }
         if !self.val.is_empty() {
             os.write_string(2, &self.val)?;
@@ -703,7 +689,7 @@ impl ::protobuf::Message for PutArgs {
         static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
         descriptor.get(|| {
             let mut fields = ::std::vec::Vec::new();
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeInt64>(
                 "key",
                 |m: &PutArgs| { &m.key },
                 |m: &mut PutArgs| { &mut m.key },
@@ -739,7 +725,7 @@ impl ::protobuf::Message for PutArgs {
 
 impl ::protobuf::Clear for PutArgs {
     fn clear(&mut self) {
-        self.key.clear();
+        self.key = 0;
         self.val.clear();
         self.client_id = 0;
         self.serial_num = 0;
@@ -956,7 +942,7 @@ impl ::protobuf::reflect::ProtobufValue for PutReply {
 #[derive(PartialEq,Clone,Default)]
 pub struct DeleteArgs {
     // message fields
-    pub key: ::std::string::String,
+    pub key: i64,
     pub client_id: i64,
     pub serial_num: i32,
     // special fields
@@ -975,30 +961,19 @@ impl DeleteArgs {
         ::std::default::Default::default()
     }
 
-    // string key = 1;
+    // int64 key = 1;
 
 
-    pub fn get_key(&self) -> &str {
-        &self.key
+    pub fn get_key(&self) -> i64 {
+        self.key
     }
     pub fn clear_key(&mut self) {
-        self.key.clear();
+        self.key = 0;
     }
 
     // Param is passed by value, moved
-    pub fn set_key(&mut self, v: ::std::string::String) {
+    pub fn set_key(&mut self, v: i64) {
         self.key = v;
-    }
-
-    // Mutable pointer to the field.
-    // If field is not initialized, it is initialized with default value first.
-    pub fn mut_key(&mut self) -> &mut ::std::string::String {
-        &mut self.key
-    }
-
-    // Take field
-    pub fn take_key(&mut self) -> ::std::string::String {
-        ::std::mem::replace(&mut self.key, ::std::string::String::new())
     }
 
     // int64 client_id = 2;
@@ -1042,7 +1017,11 @@ impl ::protobuf::Message for DeleteArgs {
             let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
                 1 => {
-                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.key)?;
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_int64()?;
+                    self.key = tmp;
                 },
                 2 => {
                     if wire_type != ::protobuf::wire_format::WireTypeVarint {
@@ -1070,8 +1049,8 @@ impl ::protobuf::Message for DeleteArgs {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
-        if !self.key.is_empty() {
-            my_size += ::protobuf::rt::string_size(1, &self.key);
+        if self.key != 0 {
+            my_size += ::protobuf::rt::value_size(1, self.key, ::protobuf::wire_format::WireTypeVarint);
         }
         if self.client_id != 0 {
             my_size += ::protobuf::rt::value_size(2, self.client_id, ::protobuf::wire_format::WireTypeVarint);
@@ -1085,8 +1064,8 @@ impl ::protobuf::Message for DeleteArgs {
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
-        if !self.key.is_empty() {
-            os.write_string(1, &self.key)?;
+        if self.key != 0 {
+            os.write_int64(1, self.key)?;
         }
         if self.client_id != 0 {
             os.write_int64(2, self.client_id)?;
@@ -1132,7 +1111,7 @@ impl ::protobuf::Message for DeleteArgs {
         static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
         descriptor.get(|| {
             let mut fields = ::std::vec::Vec::new();
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeInt64>(
                 "key",
                 |m: &DeleteArgs| { &m.key },
                 |m: &mut DeleteArgs| { &mut m.key },
@@ -1163,7 +1142,7 @@ impl ::protobuf::Message for DeleteArgs {
 
 impl ::protobuf::Clear for DeleteArgs {
     fn clear(&mut self) {
-        self.key.clear();
+        self.key = 0;
         self.client_id = 0;
         self.serial_num = 0;
         self.unknown_fields.clear();
@@ -1379,7 +1358,8 @@ impl ::protobuf::reflect::ProtobufValue for DeleteReply {
 #[derive(PartialEq,Clone,Default)]
 pub struct ScanArgs {
     // message fields
-    pub start_timestamp: i64,
+    pub start_key: i64,
+    pub end_key: i64,
     pub client_id: i64,
     pub serial_num: i32,
     // special fields
@@ -1398,22 +1378,37 @@ impl ScanArgs {
         ::std::default::Default::default()
     }
 
-    // int64 start_timestamp = 1;
+    // int64 start_key = 1;
 
 
-    pub fn get_start_timestamp(&self) -> i64 {
-        self.start_timestamp
+    pub fn get_start_key(&self) -> i64 {
+        self.start_key
     }
-    pub fn clear_start_timestamp(&mut self) {
-        self.start_timestamp = 0;
+    pub fn clear_start_key(&mut self) {
+        self.start_key = 0;
     }
 
     // Param is passed by value, moved
-    pub fn set_start_timestamp(&mut self, v: i64) {
-        self.start_timestamp = v;
+    pub fn set_start_key(&mut self, v: i64) {
+        self.start_key = v;
     }
 
-    // int64 client_id = 2;
+    // int64 end_key = 2;
+
+
+    pub fn get_end_key(&self) -> i64 {
+        self.end_key
+    }
+    pub fn clear_end_key(&mut self) {
+        self.end_key = 0;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_end_key(&mut self, v: i64) {
+        self.end_key = v;
+    }
+
+    // int64 client_id = 3;
 
 
     pub fn get_client_id(&self) -> i64 {
@@ -1428,7 +1423,7 @@ impl ScanArgs {
         self.client_id = v;
     }
 
-    // int32 serial_num = 3;
+    // int32 serial_num = 4;
 
 
     pub fn get_serial_num(&self) -> i32 {
@@ -1458,16 +1453,23 @@ impl ::protobuf::Message for ScanArgs {
                         return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
                     }
                     let tmp = is.read_int64()?;
-                    self.start_timestamp = tmp;
+                    self.start_key = tmp;
                 },
                 2 => {
                     if wire_type != ::protobuf::wire_format::WireTypeVarint {
                         return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
                     }
                     let tmp = is.read_int64()?;
-                    self.client_id = tmp;
+                    self.end_key = tmp;
                 },
                 3 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_int64()?;
+                    self.client_id = tmp;
+                },
+                4 => {
                     if wire_type != ::protobuf::wire_format::WireTypeVarint {
                         return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
                     }
@@ -1486,14 +1488,17 @@ impl ::protobuf::Message for ScanArgs {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
-        if self.start_timestamp != 0 {
-            my_size += ::protobuf::rt::value_size(1, self.start_timestamp, ::protobuf::wire_format::WireTypeVarint);
+        if self.start_key != 0 {
+            my_size += ::protobuf::rt::value_size(1, self.start_key, ::protobuf::wire_format::WireTypeVarint);
+        }
+        if self.end_key != 0 {
+            my_size += ::protobuf::rt::value_size(2, self.end_key, ::protobuf::wire_format::WireTypeVarint);
         }
         if self.client_id != 0 {
-            my_size += ::protobuf::rt::value_size(2, self.client_id, ::protobuf::wire_format::WireTypeVarint);
+            my_size += ::protobuf::rt::value_size(3, self.client_id, ::protobuf::wire_format::WireTypeVarint);
         }
         if self.serial_num != 0 {
-            my_size += ::protobuf::rt::value_size(3, self.serial_num, ::protobuf::wire_format::WireTypeVarint);
+            my_size += ::protobuf::rt::value_size(4, self.serial_num, ::protobuf::wire_format::WireTypeVarint);
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
@@ -1501,14 +1506,17 @@ impl ::protobuf::Message for ScanArgs {
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
-        if self.start_timestamp != 0 {
-            os.write_int64(1, self.start_timestamp)?;
+        if self.start_key != 0 {
+            os.write_int64(1, self.start_key)?;
+        }
+        if self.end_key != 0 {
+            os.write_int64(2, self.end_key)?;
         }
         if self.client_id != 0 {
-            os.write_int64(2, self.client_id)?;
+            os.write_int64(3, self.client_id)?;
         }
         if self.serial_num != 0 {
-            os.write_int32(3, self.serial_num)?;
+            os.write_int32(4, self.serial_num)?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -1549,9 +1557,14 @@ impl ::protobuf::Message for ScanArgs {
         descriptor.get(|| {
             let mut fields = ::std::vec::Vec::new();
             fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeInt64>(
-                "start_timestamp",
-                |m: &ScanArgs| { &m.start_timestamp },
-                |m: &mut ScanArgs| { &mut m.start_timestamp },
+                "start_key",
+                |m: &ScanArgs| { &m.start_key },
+                |m: &mut ScanArgs| { &mut m.start_key },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeInt64>(
+                "end_key",
+                |m: &ScanArgs| { &m.end_key },
+                |m: &mut ScanArgs| { &mut m.end_key },
             ));
             fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeInt64>(
                 "client_id",
@@ -1579,7 +1592,8 @@ impl ::protobuf::Message for ScanArgs {
 
 impl ::protobuf::Clear for ScanArgs {
     fn clear(&mut self) {
-        self.start_timestamp = 0;
+        self.start_key = 0;
+        self.end_key = 0;
         self.client_id = 0;
         self.serial_num = 0;
         self.unknown_fields.clear();
@@ -1600,6 +1614,10 @@ impl ::protobuf::reflect::ProtobufValue for ScanArgs {
 
 #[derive(PartialEq,Clone,Default)]
 pub struct ScanReply {
+    // message fields
+    pub success: bool,
+    pub msg: ::std::string::String,
+    pub keys: ::std::vec::Vec<i64>,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -1615,6 +1633,72 @@ impl ScanReply {
     pub fn new() -> ScanReply {
         ::std::default::Default::default()
     }
+
+    // bool success = 1;
+
+
+    pub fn get_success(&self) -> bool {
+        self.success
+    }
+    pub fn clear_success(&mut self) {
+        self.success = false;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_success(&mut self, v: bool) {
+        self.success = v;
+    }
+
+    // string msg = 2;
+
+
+    pub fn get_msg(&self) -> &str {
+        &self.msg
+    }
+    pub fn clear_msg(&mut self) {
+        self.msg.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_msg(&mut self, v: ::std::string::String) {
+        self.msg = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_msg(&mut self) -> &mut ::std::string::String {
+        &mut self.msg
+    }
+
+    // Take field
+    pub fn take_msg(&mut self) -> ::std::string::String {
+        ::std::mem::replace(&mut self.msg, ::std::string::String::new())
+    }
+
+    // repeated int64 keys = 3;
+
+
+    pub fn get_keys(&self) -> &[i64] {
+        &self.keys
+    }
+    pub fn clear_keys(&mut self) {
+        self.keys.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_keys(&mut self, v: ::std::vec::Vec<i64>) {
+        self.keys = v;
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_keys(&mut self) -> &mut ::std::vec::Vec<i64> {
+        &mut self.keys
+    }
+
+    // Take field
+    pub fn take_keys(&mut self) -> ::std::vec::Vec<i64> {
+        ::std::mem::replace(&mut self.keys, ::std::vec::Vec::new())
+    }
 }
 
 impl ::protobuf::Message for ScanReply {
@@ -1626,6 +1710,19 @@ impl ::protobuf::Message for ScanReply {
         while !is.eof()? {
             let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
+                1 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_bool()?;
+                    self.success = tmp;
+                },
+                2 => {
+                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.msg)?;
+                },
+                3 => {
+                    ::protobuf::rt::read_repeated_int64_into(wire_type, is, &mut self.keys)?;
+                },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
@@ -1638,12 +1735,30 @@ impl ::protobuf::Message for ScanReply {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
+        if self.success != false {
+            my_size += 2;
+        }
+        if !self.msg.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.msg);
+        }
+        for value in &self.keys {
+            my_size += ::protobuf::rt::value_size(3, *value, ::protobuf::wire_format::WireTypeVarint);
+        };
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        if self.success != false {
+            os.write_bool(1, self.success)?;
+        }
+        if !self.msg.is_empty() {
+            os.write_string(2, &self.msg)?;
+        }
+        for v in &self.keys {
+            os.write_int64(3, *v)?;
+        };
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -1681,7 +1796,22 @@ impl ::protobuf::Message for ScanReply {
     fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
         static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
         descriptor.get(|| {
-            let fields = ::std::vec::Vec::new();
+            let mut fields = ::std::vec::Vec::new();
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
+                "success",
+                |m: &ScanReply| { &m.success },
+                |m: &mut ScanReply| { &mut m.success },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "msg",
+                |m: &ScanReply| { &m.msg },
+                |m: &mut ScanReply| { &mut m.msg },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_vec_accessor::<_, ::protobuf::types::ProtobufTypeInt64>(
+                "keys",
+                |m: &ScanReply| { &m.keys },
+                |m: &mut ScanReply| { &mut m.keys },
+            ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<ScanReply>(
                 "ScanReply",
                 fields,
@@ -1698,6 +1828,9 @@ impl ::protobuf::Message for ScanReply {
 
 impl ::protobuf::Clear for ScanReply {
     fn clear(&mut self) {
+        self.success = false;
+        self.msg.clear();
+        self.keys.clear();
         self.unknown_fields.clear();
     }
 }
@@ -1716,27 +1849,29 @@ impl ::protobuf::reflect::ProtobufValue for ScanReply {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n\x0ckvraft.proto\x12\x06kvraft\"W\n\x07GetArgs\x12\x10\n\x03key\x18\
-    \x01\x20\x01(\tR\x03key\x12\x1b\n\tclient_id\x18\x02\x20\x01(\x03R\x08cl\
-    ientId\x12\x1d\n\nserial_num\x18\x03\x20\x01(\x05R\tserialNum\"H\n\x08Ge\
-    tReply\x12\x18\n\x07success\x18\x01\x20\x01(\x08R\x07success\x12\x10\n\
+    \x01\x20\x01(\x03R\x03key\x12\x1b\n\tclient_id\x18\x02\x20\x01(\x03R\x08\
+    clientId\x12\x1d\n\nserial_num\x18\x03\x20\x01(\x05R\tserialNum\"H\n\x08\
+    GetReply\x12\x18\n\x07success\x18\x01\x20\x01(\x08R\x07success\x12\x10\n\
     \x03msg\x18\x02\x20\x01(\tR\x03msg\x12\x10\n\x03val\x18\x03\x20\x01(\tR\
-    \x03val\"i\n\x07PutArgs\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\
-    \x10\n\x03val\x18\x02\x20\x01(\tR\x03val\x12\x1b\n\tclient_id\x18\x03\
-    \x20\x01(\x03R\x08clientId\x12\x1d\n\nserial_num\x18\x04\x20\x01(\x05R\t\
-    serialNum\"6\n\x08PutReply\x12\x18\n\x07success\x18\x01\x20\x01(\x08R\
-    \x07success\x12\x10\n\x03msg\x18\x02\x20\x01(\tR\x03msg\"Z\n\nDeleteArgs\
-    \x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x1b\n\tclient_id\x18\
-    \x02\x20\x01(\x03R\x08clientId\x12\x1d\n\nserial_num\x18\x03\x20\x01(\
-    \x05R\tserialNum\"9\n\x0bDeleteReply\x12\x18\n\x07success\x18\x01\x20\
-    \x01(\x08R\x07success\x12\x10\n\x03msg\x18\x02\x20\x01(\tR\x03msg\"o\n\
-    \x08ScanArgs\x12'\n\x0fstart_timestamp\x18\x01\x20\x01(\x03R\x0estartTim\
-    estamp\x12\x1b\n\tclient_id\x18\x02\x20\x01(\x03R\x08clientId\x12\x1d\n\
-    \nserial_num\x18\x03\x20\x01(\x05R\tserialNum\"\x0b\n\tScanReply2\xc4\
-    \x01\n\x06KVRaft\x12*\n\x03Get\x12\x0f.kvraft.GetArgs\x1a\x10.kvraft.Get\
-    Reply\"\0\x12*\n\x03Put\x12\x0f.kvraft.PutArgs\x1a\x10.kvraft.PutReply\"\
-    \0\x123\n\x06Delete\x12\x12.kvraft.DeleteArgs\x1a\x13.kvraft.DeleteReply\
-    \"\0\x12-\n\x04Scan\x12\x10.kvraft.ScanArgs\x1a\x11.kvraft.ScanReply\"\0\
-    b\x06proto3\
+    \x03val\"i\n\x07PutArgs\x12\x10\n\x03key\x18\x01\x20\x01(\x03R\x03key\
+    \x12\x10\n\x03val\x18\x02\x20\x01(\tR\x03val\x12\x1b\n\tclient_id\x18\
+    \x03\x20\x01(\x03R\x08clientId\x12\x1d\n\nserial_num\x18\x04\x20\x01(\
+    \x05R\tserialNum\"6\n\x08PutReply\x12\x18\n\x07success\x18\x01\x20\x01(\
+    \x08R\x07success\x12\x10\n\x03msg\x18\x02\x20\x01(\tR\x03msg\"Z\n\nDelet\
+    eArgs\x12\x10\n\x03key\x18\x01\x20\x01(\x03R\x03key\x12\x1b\n\tclient_id\
+    \x18\x02\x20\x01(\x03R\x08clientId\x12\x1d\n\nserial_num\x18\x03\x20\x01\
+    (\x05R\tserialNum\"9\n\x0bDeleteReply\x12\x18\n\x07success\x18\x01\x20\
+    \x01(\x08R\x07success\x12\x10\n\x03msg\x18\x02\x20\x01(\tR\x03msg\"|\n\
+    \x08ScanArgs\x12\x1b\n\tstart_key\x18\x01\x20\x01(\x03R\x08startKey\x12\
+    \x17\n\x07end_key\x18\x02\x20\x01(\x03R\x06endKey\x12\x1b\n\tclient_id\
+    \x18\x03\x20\x01(\x03R\x08clientId\x12\x1d\n\nserial_num\x18\x04\x20\x01\
+    (\x05R\tserialNum\"K\n\tScanReply\x12\x18\n\x07success\x18\x01\x20\x01(\
+    \x08R\x07success\x12\x10\n\x03msg\x18\x02\x20\x01(\tR\x03msg\x12\x12\n\
+    \x04keys\x18\x03\x20\x03(\x03R\x04keys2\xc4\x01\n\x06KVRaft\x12*\n\x03Ge\
+    t\x12\x0f.kvraft.GetArgs\x1a\x10.kvraft.GetReply\"\0\x12*\n\x03Put\x12\
+    \x0f.kvraft.PutArgs\x1a\x10.kvraft.PutReply\"\0\x123\n\x06Delete\x12\x12\
+    .kvraft.DeleteArgs\x1a\x13.kvraft.DeleteReply\"\0\x12-\n\x04Scan\x12\x10\
+    .kvraft.ScanArgs\x1a\x11.kvraft.ScanReply\"\0b\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;
