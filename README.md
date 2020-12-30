@@ -34,4 +34,11 @@
 ## RUN
 
 + cargo run --manifest-path Cargo.toml --bin server
-+ cargo run --manifest-path Cargo.toml --bin client
++ cargo run --manifest-path Cargo.toml --bin client 34431
+
+## mind
+
+Use ```agree_chs: HashMap<i64, Receiver<Proposal>>``` to save the client -> Proposal Receiver. When a Proposal
+is Applied, the Receiver will receive the Proposal, and notify the blocked grpc request.
+
+

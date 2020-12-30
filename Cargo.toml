@@ -14,7 +14,7 @@ path = "src/proto/mod.rs"
 
 [[bin]]
 name = "server"
-path = "src/server.rs"
+path = "src/server/raft_node.rs"
 
 [[bin]]
 name = "client"
