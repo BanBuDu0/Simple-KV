@@ -43,4 +43,7 @@
 Use ```agree_chs: HashMap<i64, Receiver<Proposal>>``` to save the client -> Proposal Receiver. When a Proposal is
 Applied, the Receiver will receive the Proposal, and notify the blocked grpc request.
 
+## introduce
+
+One Server with three raft backend. TODO: each raft backend has it's own server
 
