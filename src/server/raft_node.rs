@@ -9,6 +9,7 @@ extern crate slog_term;
 
 use std::{str, thread};
 use std::collections::{HashMap, VecDeque};
+use std::hash::Hash;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::{Duration, Instant};
@@ -313,7 +314,7 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
     // after it's committed by the raft cluster, it will be poped from the queue.
     // let proposals = Arc::new(Mutex::new(VecDeque::<Proposal>::new()));
 
-    let mut nodes = Vec::new();
+    let mut nodes = Arc::new(Mutex::new(HashMap::new()));
 
     //保存了每个raft node的处理线程
     let mut handles = Vec::new();
@@ -329,10 +330,19 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
             _ => Node::create_raft_follower(rx, mailboxes),
         };
 
-        nodes.push(node);
+        nodes.lock().unwrap().insert(i, node);
+        // nodes.push(node);
     }
 
-    for mut node in nodes {
+    let mut nodes = Arc::clone(&nodes);
+
+    for node in nodes{
+
+    }
+
+    for (id, mut node) in nodes.lock().unwrap().iter() {
+        // }
+        // for mut node in nodes {
         let proposals = Arc::clone(&proposals);
         // Tick the raft node per 100ms. So use an `Instant` to trace it.
         let mut t = Instant::now();
@@ -418,7 +428,7 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
     //     }
     // }
 
-    maintain_server(proposals);
+    maintain_server(proposals, nodes);
 
     // (0..10u16)
     //     .filter(|i| {

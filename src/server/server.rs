@@ -24,6 +24,7 @@ use proto::kvraft::{DeleteArgs, GetArgs, PutArgs, ScanArgs};
 use proto::kvraft::{DeleteReply, GetReply, PutReply, ScanReply};
 use proto::kvraft_grpc::{self, KvRaft};
 
+use crate::Node;
 use crate::proposal::Proposal;
 
 //server host
@@ -98,7 +99,7 @@ impl KvRaftService {
 /**
 start grpc server for client
 **/
-pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
+pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>, nodes: Arc<Mutex<HashMap<usize, Node>>>) {
     // (0..10u16)
     //     .filter(|i| {
     //         let (proposal, rx) = Proposal::normal(String::from(i.to_string()), "hello, world".to_owned());
@@ -109,6 +110,8 @@ pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
     //         rx.recv().unwrap()
     //     })
     //     .count();
+
+    for
 
     let env = Arc::new(Environment::new(1));
     let mut kv_raft_server = KvRaftService::new();
@@ -134,11 +137,9 @@ pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
     let _ = block_on(server.shutdown());
 }
 
-fn read_persist() {
-}
+fn read_persist() {}
 
-fn persist() {
-}
+fn persist() {}
 
 /**
 implement KvRaft Method in KvRaftService
