@@ -34,6 +34,7 @@
 
 ## RUN
 
++ git checkout v1
 + cargo run --manifest-path Cargo.toml --bin server
 + cargo run --manifest-path Cargo.toml --bin client
 
