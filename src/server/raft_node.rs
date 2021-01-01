@@ -10,7 +10,7 @@ extern crate slog_term;
 use std::{str, thread};
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::{Duration, Instant};
 
@@ -18,7 +18,7 @@ use protobuf::Message as PbMessage;
 use raft::{Config, raw_node::RawNode};
 use raft::{prelude::*, StateRole};
 use raft::storage::MemStorage;
-// use raft_proto::eraftpb::*;
+use raft_proto::eraftpb::*;
 use regex::Regex;
 use slog::Drain;
 
@@ -32,7 +32,7 @@ const NUM_NODES: u32 = 3;
 
 pub struct Node {
     // None if the raft is not initialized.
-    raft_group: Option<RawNode<MemStorage>>,
+    raft_group: Arc<Mutex<Option<RawNode<MemStorage>>>>,
     // message Receiver
     my_mailbox: Receiver<Message>,
     // message sender
@@ -41,7 +41,7 @@ pub struct Node {
 
     // Key-value pairs after applied. `MemStorage` only contains raft logs,
     // so we need an additional storage engine.
-    kv_pairs: HashMap<i64, String>,
+    kv_pairs: Arc<Mutex<HashMap<i64, String>>>,
 }
 
 /**
@@ -67,6 +67,7 @@ impl Node {
         let storage = MemStorage::new();
         storage.wl().apply_snapshot(s).unwrap();
         let raft_group = Some(RawNode::new(&cfg, storage, &logger).unwrap());
+        let raft_group = Arc::new(Mutex::new(raft_group));
         Node {
             raft_group,
             my_mailbox,
@@ -81,7 +82,7 @@ impl Node {
         mailboxes: HashMap<u64, Sender<Message>>,
     ) -> Self {
         Node {
-            raft_group: None,
+            raft_group: Arc::new(Mutex::new(None)),
             my_mailbox,
             mailboxes,
             kv_pairs: Default::default(),
@@ -96,19 +97,22 @@ impl Node {
         let cfg = example_config(msg.to);
         let logger = logger.new(o!("tag" => format!("peer_{}", msg.to)));
         let storage = MemStorage::new();
-        self.raft_group = Some(RawNode::new(&cfg, storage, &logger).unwrap());
+        self.raft_group = Arc::new(Mutex::new(Some(RawNode::new(&cfg, storage, &logger).unwrap())));
     }
 
     // Step a raft message, initialize the raft if need.
     fn step(&mut self, msg: Message, logger: &slog::Logger) {
-        if self.raft_group.is_none() {
+        if self.raft_group.lock().unwrap().is_none() {
             if is_initial_msg(&msg) {
                 self.initialize_raft_from_message(&msg, &logger);
             } else {
                 return;
             }
         }
-        let raft_group = self.raft_group.as_mut().unwrap();
+        let raft_group = Arc::clone(&self.raft_group);
+        let ref mut raft_group = raft_group.lock().unwrap();
+        let mut raft_group = raft_group.as_mut().unwrap();
+
         //Step advances the state machine using the given message.
         let _ = raft_group.step(msg);
     }
@@ -156,7 +160,7 @@ fn example_config(i: u64) -> Config {
 
 fn on_ready(
     raft_group: &mut RawNode<MemStorage>,
-    kv_pairs: &mut HashMap<i64, String>,
+    kv_pairs: &mut Arc<Mutex<HashMap<i64, String>>>,
     mailboxes: &HashMap<u64, Sender<Message>>,
     proposals: &Mutex<VecDeque<Proposal>>,
     logger: &slog::Logger,
@@ -217,7 +221,7 @@ fn on_ready(
                     let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
                     // let reg = Regex::new("put (.+) (.+)").unwrap();
                     if let Some(caps) = reg.captures(&data) {
-                        kv_pairs.insert(caps[1].parse().unwrap(), caps[2].to_string());
+                        kv_pairs.lock().unwrap().insert(caps[1].parse().unwrap(), caps[2].to_string());
                         // kv_pairs.insert(caps[1].to_string(), caps[2].to_string());
                     }
                 }
@@ -314,7 +318,7 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
     // after it's committed by the raft cluster, it will be poped from the queue.
     // let proposals = Arc::new(Mutex::new(VecDeque::<Proposal>::new()));
 
-    let mut nodes = Arc::new(Mutex::new(HashMap::new()));
+    let mut nodes = HashMap::new();
 
     //保存了每个raft node的处理线程
     let mut handles = Vec::new();
@@ -323,26 +327,16 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
     for (i, rx) in rx_vec.into_iter().enumerate() {
         // A map[peer_id -> sender]. In the example we create 5 nodes, with ids in [1, 5].
         let mailboxes = (1..4u64).zip(tx_vec.iter().cloned()).collect();
-        let node = match i {
+        let mut node = match i {
             // Peer 1 is the leader.
             0 => Node::create_raft_leader(1, rx, mailboxes, &logger),
             // Other peers are followers.
             _ => Node::create_raft_follower(rx, mailboxes),
         };
 
-        nodes.lock().unwrap().insert(i, node);
-        // nodes.push(node);
-    }
+        let raft_group = Arc::clone(&node.raft_group);
+        nodes.insert(i, raft_group);
 
-    let mut nodes = Arc::clone(&nodes);
-
-    for node in nodes{
-
-    }
-
-    for (id, mut node) in nodes.lock().unwrap().iter() {
-        // }
-        // for mut node in nodes {
         let proposals = Arc::clone(&proposals);
         // Tick the raft node per 100ms. So use an `Instant` to trace it.
         let mut t = Instant::now();
@@ -364,19 +358,34 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
                     }
                 }
 
-                let raft_group = match node.raft_group {
-                    Some(ref mut r) => r,
+                let raft_group = Arc::clone(&node.raft_group);
+                let ref mut raft_group1 = raft_group.lock().unwrap();
+                let mut raft_group2 = raft_group1.as_mut();
+                let raft_group3 = match raft_group2 {
+                    Some(r) => {
+                        // nodes.insert(i, Arc::clone(&node.raft_group));
+                        r
+                    }
                     // When Node::raft_group is `None` it means the node is not initialized.
-                    _ => continue,
+                    _ => {
+                        continue;
+                    }
                 };
 
+                //
+                // let raft_group = match &mut *node.raft_group.lock().unwrap() {
+                //     Some(ref mut r) => r,
+                //     // When Node::raft_group is `None` it means the node is not initialized.
+                //     _ => continue,
+                // };
+
                 if t.elapsed() >= Duration::from_millis(100) {
-                    raft_group.tick();
+                    raft_group3.tick();
                     t = Instant::now();
                 }
 
                 // Let the leader pick pending proposals from the global queue.
-                if raft_group.raft.state == StateRole::Leader {
+                if raft_group3.raft.state == StateRole::Leader {
                     // Handle new proposals.
                     let mut proposals = proposals.lock().unwrap();
                     for p in proposals.iter_mut().skip_while(|p| p.proposed > 0) {
@@ -385,13 +394,13 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
                         //     "Get a proposal and I will propose it"
                         // );
                         println!("\nGet a proposal and I will propose it {{ {:?} }}", p);
-                        propose(raft_group, p);
+                        propose(raft_group3, p);
                     }
                 }
 
                 // Handle readies from the raft.
                 on_ready(
-                    raft_group,
+                    raft_group3,
                     &mut node.kv_pairs,
                     &node.mailboxes,
                     &proposals,
@@ -415,18 +424,8 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
         "We get a 3 nodes Raft cluster now, now propose 100 proposals"
     );
 
-    // for mut node in nodes {
-    //     let raft_group = match node.raft_group {
-    //         Some(ref mut r) => r,
-    //         // When Node::raft_group is `None` it means the node is not initialized.
-    //         _ => continue,
-    //     };
-    //     if raft_group.raft.state == StateRole::Leader {
-    //         for (key, val) in node.kv_pairs.iter() {
-    //             println!("key: {}, val: {}", key, val);
-    //         }
-    //     }
-    // }
+
+    thread::sleep(Duration::from_secs(3));
 
     maintain_server(proposals, nodes);
 

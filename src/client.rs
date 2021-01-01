@@ -31,7 +31,7 @@ fn print_single_line(text: &str) {
 }
 
 fn main() {
-    const PORT: u16 = 5030;
+    const PORT: u16 = 5031;
     const CLIENT_ID: i64 = 1;
     let env = Arc::new(EnvBuilder::new().build());
     let ch = ChannelBuilder::new(env).connect(format!("localhost:{}", PORT).as_str());

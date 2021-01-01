@@ -19,6 +19,10 @@ use futures::channel::oneshot;
 use futures::executor::block_on;
 use grpcio::{Environment, RpcContext, ServerBuilder, UnarySink};
 use protobuf::RepeatedField;
+use raft::RawNode;
+use raft::storage::MemStorage;
+use raft_proto::eraftpb::*;
+use raft::{prelude::*, StateRole};
 
 use proto::kvraft::{DeleteArgs, GetArgs, PutArgs, ScanArgs};
 use proto::kvraft::{DeleteReply, GetReply, PutReply, ScanReply};
@@ -29,8 +33,6 @@ use crate::proposal::Proposal;
 
 //server host
 const HOST: &str = "127.0.0.1";
-//server port
-const PORT: u16 = 5030;
 //raft node num
 const NUM_NODES: u32 = 3;
 const ERR_LEADER: &str = "ERROR WRONG LEADER";
@@ -59,6 +61,8 @@ struct KvRaftService {
     // **/
     // agree_chs: HashMap<i64, Receiver<Proposal>>,
     proposals: Arc<Mutex<VecDeque<Proposal>>>,
+
+    node: Arc<Mutex<Option<RawNode<MemStorage>>>>,
 }
 
 
@@ -68,6 +72,7 @@ impl Clone for KvRaftService {
             client_last_seq: self.client_last_seq.clone(),
             db: self.db.clone(),
             proposals: self.proposals.clone(),
+            node: self.node.clone(),
         };
         temp
     }
@@ -76,6 +81,7 @@ impl Clone for KvRaftService {
         self.db = source.db.clone();
         self.client_last_seq = source.client_last_seq.clone();
         self.proposals = source.proposals.clone();
+        self.node = source.node.clone();
     }
 }
 
@@ -90,6 +96,7 @@ impl KvRaftService {
             client_last_seq: Default::default(),
             db: Arc::new(Mutex::new(HashMap::new())),
             proposals: Arc::new(Mutex::new(Default::default())),
+            node: Arc::new(Mutex::new(None)),
             // kv_pairs: Default::default(),
             // agree_chs: Default::default(),
         }
@@ -99,7 +106,8 @@ impl KvRaftService {
 /**
 start grpc server for client
 **/
-pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>, nodes: Arc<Mutex<HashMap<usize, Node>>>) {
+pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>,
+                       nodes: HashMap<usize, Arc<Mutex<Option<RawNode<MemStorage>>>>>) {
     // (0..10u16)
     //     .filter(|i| {
     //         let (proposal, rx) = Proposal::normal(String::from(i.to_string()), "hello, world".to_owned());
@@ -110,31 +118,60 @@ pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>, nodes: Arc<Mut
     //         rx.recv().unwrap()
     //     })
     //     .count();
+    let port: Arc<Vec<u16>> = Arc::new(vec![5030, 5031, 5032]);
+    let mut handles = Vec::new();
+    for node in nodes {
+        let raft_group = Arc::clone(& node.1);
+        // let ref mut raft_group1 = raft_group.lock().unwrap();
+        // let mut raft_group2 = raft_group1.as_mut();
+        // let raft_group2 = match raft_group2 {
+        //     Some(ref mut r) => {
+        //         println!("{} init", node.0);
+        //         r
+        //     },
+        //     // When Node::raft_group is `None` it means the node is not initialized.
+        //     _ => {
+        //         println!("{} not init", node.0);
+        //         continue
+        //     },
+        // };
 
-    for
-
-    let env = Arc::new(Environment::new(1));
-    let mut kv_raft_server = KvRaftService::new();
-    kv_raft_server.proposals = proposals;
-    read_persist();
-    let service = kvraft_grpc::create_kv_raft(kv_raft_server);
-    let mut server = ServerBuilder::new(env)
-        .register_service(service)
-        .bind(HOST, PORT)
-        .build()
-        .unwrap();
-    server.start();
-    for (ref host, port) in server.bind_addrs() {
-        println!("listening on {}:{}", host, port);
+        let proposals = Arc::clone(&proposals);
+        let port = Arc::clone(&port);
+        let handle = thread::spawn(move || {
+            let env = Arc::new(Environment::new(1));
+            let mut kv_raft_server = KvRaftService::new();
+            kv_raft_server.proposals = proposals;
+            kv_raft_server.node = raft_group;
+            read_persist();
+            let service = kvraft_grpc::create_kv_raft(kv_raft_server);
+            let mut server = ServerBuilder::new(env)
+                .register_service(service)
+                .bind(HOST, port[node.0])
+                .build()
+                .unwrap();
+            server.start();
+            for (ref host, port) in server.bind_addrs() {
+                println!("listening on {}:{}", host, port);
+            }
+            let (tx, rx) = oneshot::channel();
+            thread::spawn(move || {
+                println!("Press ENTER to exit...");
+                let _ = io::stdin().read(&mut [0]).unwrap();
+                tx.send(())
+            });
+            let _ = block_on(rx);
+            let _ = block_on(server.shutdown());
+        }
+        );
+        handles.push(handle);
     }
-    let (tx, rx) = oneshot::channel();
-    thread::spawn(move || {
-        println!("Press ENTER to exit...");
-        let _ = io::stdin().read(&mut [0]).unwrap();
-        tx.send(())
-    });
-    let _ = block_on(rx);
-    let _ = block_on(server.shutdown());
+
+    // Wait for the thread to finish
+    for th in handles {
+        th.join().unwrap();
+    }
+
 }
 
 fn read_persist() {}
@@ -149,21 +186,30 @@ impl KvRaft for KvRaftService {
         println!("Received Get request {{ {:?} }}", args);
         let mut get_reply = GetReply::new();
 
-        let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
-        self.proposals.lock().unwrap().push_back(proposal);
-
-        if rx.recv().unwrap() {
-            if let Some(val) = self.db.lock().unwrap().get(&args.get_key()) {
-                get_reply.set_success(true);
-                get_reply.set_val(val.to_string().clone());
-            } else {
-                get_reply.set_success(false);
-                get_reply.set_msg(String::from(ERR_KEY));
-            }
-        } else {
+        let raft_group = Arc::clone(&self.node);
+        let ref mut raft_group = raft_group.lock().unwrap();
+        let mut raft_group = raft_group.as_mut().unwrap();
+        if raft_group.raft.state != StateRole::Leader{
             get_reply.set_success(false);
             get_reply.set_msg(String::from(ERR_LEADER));
+        }else{
+            let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
+            self.proposals.lock().unwrap().push_back(proposal);
+
+            if rx.recv().unwrap() {
+                if let Some(val) = self.db.lock().unwrap().get(&args.get_key()) {
+                    get_reply.set_success(true);
+                    get_reply.set_val(val.to_string().clone());
+                } else {
+                    get_reply.set_success(false);
+                    get_reply.set_msg(String::from(ERR_KEY));
+                }
+            } else {
+                get_reply.set_success(false);
+                get_reply.set_msg(String::from(ERR_LEADER));
+            }
         }
+
 
         let f = sink
             .success(get_reply.clone())
