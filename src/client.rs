@@ -3,6 +3,7 @@ extern crate proto;
 
 use std::{env, io};
 use std::io::prelude::*;
+use std::num::ParseIntError;
 use std::sync::{Arc, atomic, Mutex};
 
 use grpcio::{ChannelBuilder, EnvBuilder};
@@ -51,14 +52,28 @@ fn main() {
                 continue;
             }
 
-            let mut key = commands[1];
-            let mut get_args = GetArgs::new();
-            get_args.set_client_id(CLIENT_ID);
-            get_args.set_key(key.parse::<i64>().unwrap());
-            get_args.set_serial_num(*num);
 
-            let ok = client.get(&get_args).expect("RPC Failed");
-            println!("Get Success: {}, msg: {}, Val: {}", ok.success, ok.msg, ok.val);
+            let mut key = commands[1];
+
+            match key.parse::<i64>() {
+                Ok(temp) => {
+                    if temp < 0 {
+                        println!("Input positive integer key");
+                        continue;
+                    }
+                    let mut get_args = GetArgs::new();
+                    get_args.set_client_id(CLIENT_ID);
+                    get_args.set_key(temp);
+                    get_args.set_serial_num(*num);
+
+                    let ok = client.get(&get_args).expect("RPC Failed");
+                    println!("Get Success: {}, msg: {}, Val: {}", ok.success, ok.msg, ok.val);
+                }
+                Err(_) => {
+                    println!("Input i64 key");
+                    continue;
+                }
+            }
         } else if commands[0].to_lowercase() == "put" {
             if commands.len() < 3 {
                 println!("Input put's key and value");
@@ -67,15 +82,28 @@ fn main() {
             let key = commands[1];
             let val = commands[2];
 
-            let mut put_args = PutArgs::new();
-            put_args.set_client_id(CLIENT_ID);
-            put_args.set_key(key.parse::<i64>().unwrap());
-            put_args.set_val(String::from(val.clone()));
+            match key.parse::<i64>() {
+                Ok(temp) => {
+                    if temp < 0 {
+                        println!("Input positive integer key");
+                        continue;
+                    }
 
-            put_args.set_serial_num(*num);
+                    let mut put_args = PutArgs::new();
+                    put_args.set_client_id(CLIENT_ID);
+                    put_args.set_key(temp);
+                    put_args.set_val(String::from(val.clone()));
 
-            let ok = client.put(&put_args).expect("RPC Failed");
-            println!("Put Success: {}, msg: {}", ok.success, ok.msg);
+                    put_args.set_serial_num(*num);
+
+                    let ok = client.put(&put_args).expect("RPC Failed");
+                    println!("Put Success: {}, msg: {}", ok.success, ok.msg);
+                }
+                Err(_) => {
+                    println!("Input i64 key");
+                    continue;
+                }
+            }
         } else if commands[0].to_lowercase() == "delete" {
             if commands.len() == 1 {
                 println!("Input delete's key");
@@ -83,23 +111,48 @@ fn main() {
             }
 
             let mut key = commands[1];
-            let mut delete_args = DeleteArgs::new();
+            match key.parse::<i64>() {
+                Ok(temp) => {
+                    if temp < 0 {
+                        println!("Input positive integer key");
+                        continue;
+                    }
 
-            delete_args.set_client_id(CLIENT_ID);
-            delete_args.set_key(key.parse::<i64>().unwrap());
-            delete_args.set_serial_num(*num);
+                    let mut delete_args = DeleteArgs::new();
 
-            let ok = client.delete(&delete_args).expect("RPC Failed");
-            println!("Delete Success: {}, msg: {}", ok.success, ok.msg);
+                    delete_args.set_client_id(CLIENT_ID);
+                    delete_args.set_key(temp);
+                    delete_args.set_serial_num(*num);
+
+                    let ok = client.delete(&delete_args).expect("RPC Failed");
+                    println!("Delete Success: {}, msg: {}", ok.success, ok.msg);
+                }
+                Err(_) => {
+                    println!("Input i64 key");
+                    continue;
+                }
+            }
         } else if commands[0].to_lowercase() == "scan" {
             if commands.len() == 1 {
                 println!("Input scan's start key and end key");
                 continue;
             }
 
+            let mut start_index: i64;
+            let mut end_index: i64;
+
+            match commands[1].parse::<i64>() {
+                Ok(temp) => {
+                    start_index = temp;
+                }
+                Err(_) => {
+                    println!("Input i64 start_index");
+                    continue;
+                }
+            }
+
             let mut scan_args = ScanArgs::new();
             if commands.len() == 2 {
-                let mut start_index = commands[1].parse::<i64>().unwrap();
                 scan_args.set_serial_num(*num);
                 scan_args.set_client_id(CLIENT_ID);
                 scan_args.set_start_key(start_index);
@@ -107,8 +160,16 @@ fn main() {
             }
 
             if commands.len() == 3 {
-                let mut start_index = commands[1].parse::<i64>().unwrap();
-                let mut end_index = commands[2].parse::<i64>().unwrap();
+                match commands[2].parse::<i64>() {
+                    Ok(temp) => {
+                        end_index = temp;
+                    }
+                    Err(_) => {
+                        println!("Input i64 end_index");
+                        continue;
+                    }
+                }
+
                 scan_args.set_serial_num(*num);
                 scan_args.set_client_id(CLIENT_ID);
                 scan_args.set_start_key(start_index);

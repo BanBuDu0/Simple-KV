@@ -157,7 +157,7 @@ impl KvRaft for KvRaftService {
                 get_reply.set_val(val.to_string().clone());
             } else {
                 get_reply.set_success(false);
-                get_reply.set_val(String::from(ERR_KEY));
+                get_reply.set_msg(String::from(ERR_KEY));
             }
         } else {
             get_reply.set_success(false);
