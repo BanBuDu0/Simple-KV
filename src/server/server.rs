@@ -10,7 +10,7 @@ extern crate slog_term;
 use std::{io, str, thread};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use encoding::Encoding;
@@ -56,13 +56,9 @@ struct KvRaftService {
     **/
     db: Arc<Mutex<HashMap<i64, String>>>,
 
-    // /**
-    // agree_chs, wait raft apply a proposal and notify the KvRaftService to reply client
-    // **/
-    // agree_chs: HashMap<i64, Receiver<Proposal>>,
     proposals: Arc<Mutex<VecDeque<Proposal>>>,
 
-    node: Arc<Mutex<Option<RawNode<MemStorage>>>>,
+    node: Arc<Mutex<RawNode<MemStorage>>>,
 }
 
 
@@ -90,13 +86,13 @@ impl Clone for KvRaftService {
 init the KvRaftService
 **/
 impl KvRaftService {
-    fn new() -> Self {
+    fn new(p: Arc<Mutex<VecDeque<Proposal>>>, n: Arc<Mutex<RawNode<MemStorage>>>) -> Self {
         Self {
             // mu: Mutex::new(KvRaftService),
             client_last_seq: Default::default(),
             db: Arc::new(Mutex::new(HashMap::new())),
-            proposals: Arc::new(Mutex::new(Default::default())),
-            node: Arc::new(Mutex::new(None)),
+            proposals: p,
+            node: n,
             // kv_pairs: Default::default(),
             // agree_chs: Default::default(),
         }
@@ -107,7 +103,7 @@ impl KvRaftService {
 start grpc server for client
 **/
 pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>,
-                       nodes: HashMap<usize, Arc<Mutex<Option<RawNode<MemStorage>>>>>) {
+                       nodes: HashMap<usize, Arc<Mutex<RawNode<MemStorage>>>>) {
     // (0..10u16)
     //     .filter(|i| {
     //         let (proposal, rx) = Proposal::normal(String::from(i.to_string()), "hello, world".to_owned());
@@ -121,7 +117,7 @@ pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>,
     let port: Arc<Vec<u16>> = Arc::new(vec![5030, 5031, 5032]);
     let mut handles = Vec::new();
     for node in nodes {
-        let raft_group = Arc::clone(& node.1);
+        let raft_group = Arc::clone(&node.1);
         // let ref mut raft_group1 = raft_group.lock().unwrap();
         // let mut raft_group2 = raft_group1.as_mut();
         // let raft_group2 = match raft_group2 {
@@ -140,9 +136,9 @@ pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>,
         let port = Arc::clone(&port);
         let handle = thread::spawn(move || {
             let env = Arc::new(Environment::new(1));
-            let mut kv_raft_server = KvRaftService::new();
-            kv_raft_server.proposals = proposals;
-            kv_raft_server.node = raft_group;
+            let mut kv_raft_server = KvRaftService::new(proposals, raft_group);
+            // kv_raft_server.proposals = proposals;
+            // kv_raft_server.node = raft_group;
             read_persist();
             let service = kvraft_grpc::create_kv_raft(kv_raft_server);
             let mut server = ServerBuilder::new(env)
@@ -171,7 +167,6 @@ pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>,
     for th in handles {
         th.join().unwrap();
     }
-
 }
 
 fn read_persist() {}
@@ -187,12 +182,12 @@ impl KvRaft for KvRaftService {
         let mut get_reply = GetReply::new();
 
         let raft_group = Arc::clone(&self.node);
-        let ref mut raft_group = raft_group.lock().unwrap();
-        let mut raft_group = raft_group.as_mut().unwrap();
-        if raft_group.raft.state != StateRole::Leader{
+        // let raft_group = raft_group.lock().unwrap();
+        // let raft_group = raft_group.unwrap();
+        if raft_group.lock().unwrap().raft.state != StateRole::Leader {
             get_reply.set_success(false);
             get_reply.set_msg(String::from(ERR_LEADER));
-        }else{
+        } else {
             let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
             self.proposals.lock().unwrap().push_back(proposal);
 

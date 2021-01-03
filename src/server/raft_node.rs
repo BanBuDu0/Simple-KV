@@ -32,7 +32,7 @@ const NUM_NODES: u32 = 3;
 
 pub struct Node {
     // None if the raft is not initialized.
-    raft_group: Arc<Mutex<Option<RawNode<MemStorage>>>>,
+    raft_group: Arc<Mutex<RawNode<MemStorage>>>,
     // message Receiver
     my_mailbox: Receiver<Message>,
     // message sender
@@ -66,7 +66,7 @@ impl Node {
         s.mut_metadata().mut_conf_state().voters = vec![1];
         let storage = MemStorage::new();
         storage.wl().apply_snapshot(s).unwrap();
-        let raft_group = Some(RawNode::new(&cfg, storage, &logger).unwrap());
+        let raft_group = RawNode::new(&cfg, storage, &logger).unwrap();
         let raft_group = Arc::new(Mutex::new(raft_group));
         Node {
             raft_group,
@@ -78,11 +78,16 @@ impl Node {
 
     // Create a raft follower.
     fn create_raft_follower(
+        id: u64,
         my_mailbox: Receiver<Message>,
         mailboxes: HashMap<u64, Sender<Message>>,
+        logger: &slog::Logger,
     ) -> Self {
+        let cfg = example_config(id);
+        let logger = logger.new(o!("tag" => format!("peer_{}", id)));
+        let storage = MemStorage::new();
         Node {
-            raft_group: Arc::new(Mutex::new(None)),
+            raft_group: Arc::new(Mutex::new(RawNode::new(&cfg, storage, &logger).unwrap())),
             my_mailbox,
             mailboxes,
             kv_pairs: Default::default(),
@@ -94,27 +99,29 @@ impl Node {
         if !is_initial_msg(msg) {
             return;
         }
+        println!("get is_initial_msg {{ {:?} }}", msg);
         let cfg = example_config(msg.to);
         let logger = logger.new(o!("tag" => format!("peer_{}", msg.to)));
         let storage = MemStorage::new();
-        self.raft_group = Arc::new(Mutex::new(Some(RawNode::new(&cfg, storage, &logger).unwrap())));
+        self.raft_group = Arc::new(Mutex::new(RawNode::new(&cfg, storage, &logger).unwrap()));
     }
 
     // Step a raft message, initialize the raft if need.
     fn step(&mut self, msg: Message, logger: &slog::Logger) {
-        if self.raft_group.lock().unwrap().is_none() {
-            if is_initial_msg(&msg) {
-                self.initialize_raft_from_message(&msg, &logger);
-            } else {
-                return;
-            }
-        }
+        // if self.raft_group.lock().unwrap().is_none() {
+        //     if is_initial_msg(&msg) {
+        //         self.initialize_raft_from_message(&msg, &logger);
+        //     } else {
+        //         return;
+        //     }
+        // }
         let raft_group = Arc::clone(&self.raft_group);
-        let ref mut raft_group = raft_group.lock().unwrap();
-        let mut raft_group = raft_group.as_mut().unwrap();
-
-        //Step advances the state machine using the given message.
-        let _ = raft_group.step(msg);
+        let _ = raft_group.lock().unwrap().step(msg);
+        // let ref mut raft_group = raft_group.lock().unwrap();
+        // let mut raft_group = raft_group.as_mut().unwrap();
+        //
+        // //Step advances the state machine using the given message.
+        // let _ = raft_group.step(msg);
     }
 }
 
@@ -124,22 +131,22 @@ fn is_initial_msg(msg: &Message) -> bool {
     let msg_type = msg.get_msg_type();
     msg_type == MessageType::MsgRequestVote
         || msg_type == MessageType::MsgRequestPreVote
-        || (msg_type == MessageType::MsgHeartbeat && msg.commit == 0)
+        // || (msg_type == MessageType::MsgHeartbeat && msg.commit == 0)
 }
 
-fn propose(raft_group: &mut RawNode<MemStorage>, proposal: &mut Proposal) {
-    let last_index1 = raft_group.raft.raft_log.last_index() + 1;
+fn propose(raft_group: Arc<Mutex<RawNode<MemStorage>>>, proposal: &mut Proposal) {
+    let last_index1 = raft_group.lock().unwrap().raft.raft_log.last_index() + 1;
     if let Some((ref key, ref value)) = proposal.normal {
         let data = format!("put {} {}", key, value).into_bytes();
-        let _ = raft_group.propose(vec![], data);
+        let _ = raft_group.lock().unwrap().propose(vec![], data);
     } else if let Some(ref cc) = proposal.conf_change {
-        let _ = raft_group.propose_conf_change(vec![], cc.clone());
+        let _ = raft_group.lock().unwrap().propose_conf_change(vec![], cc.clone());
     } else if let Some(_transferee) = proposal.transfer_leader {
         // TODO: implement transfer leader.
         unimplemented!();
     }
 
-    let last_index2 = raft_group.raft.raft_log.last_index() + 1;
+    let last_index2 = raft_group.lock().unwrap().raft.raft_log.last_index() + 1;
     if last_index2 == last_index1 {
         // Propose failed, don't forget to respond to the client.
         proposal.propose_success.send(false).unwrap();
@@ -159,18 +166,18 @@ fn example_config(i: u64) -> Config {
 
 
 fn on_ready(
-    raft_group: &mut RawNode<MemStorage>,
+    raft_group: Arc<Mutex<RawNode<MemStorage>>>,
     kv_pairs: &mut Arc<Mutex<HashMap<i64, String>>>,
     mailboxes: &HashMap<u64, Sender<Message>>,
     proposals: &Mutex<VecDeque<Proposal>>,
     logger: &slog::Logger,
 ) {
-    if !raft_group.has_ready() {
+    if !raft_group.lock().unwrap().has_ready() {
         return;
     }
-    let store = raft_group.raft.raft_log.store.clone();
+    let store = raft_group.lock().unwrap().raft.raft_log.store.clone();
     // Get the `Ready` with `RawNode::ready` interface.
-    let mut ready = raft_group.ready();
+    let mut ready = raft_group.lock().unwrap().ready();
 
     let handle_messages = |msgs: Vec<Vec<Message>>| {
         for vec_msg in msgs {
@@ -202,7 +209,7 @@ fn on_ready(
     }
 
     let mut handle_committed_entries =
-        |rn: &mut RawNode<MemStorage>, committed_entries: Vec<Entry>| {
+        |rn: Arc<Mutex<RawNode<MemStorage>>>, committed_entries: Vec<Entry>| {
             for entry in committed_entries {
                 if entry.data.is_empty() {
                     // From new elected leaders.
@@ -212,7 +219,7 @@ fn on_ready(
                     // For conf change messages, make them effective.
                     let mut cc = ConfChange::default();
                     cc.merge_from_bytes(&entry.data).unwrap();
-                    let cs = rn.apply_conf_change(&cc).unwrap();
+                    let cs = rn.lock().unwrap().apply_conf_change(&cc).unwrap();
                     store.wl().set_conf_state(cs);
                 } else {
                     // For normal proposals, extract the key-value pair and then
@@ -225,7 +232,7 @@ fn on_ready(
                         // kv_pairs.insert(caps[1].to_string(), caps[2].to_string());
                     }
                 }
-                if rn.raft.state == StateRole::Leader {
+                if rn.lock().unwrap().raft.state == StateRole::Leader {
                     // The leader should response to the clients, tell them if their proposals
                     // succeeded or not.
                     let proposal = proposals.lock().unwrap().pop_front().unwrap();
@@ -233,8 +240,9 @@ fn on_ready(
                 }
             }
         };
+    let raft_group1 = Arc::clone(&raft_group);
     // Apply all committed entries.
-    handle_committed_entries(raft_group, ready.take_committed_entries());
+    handle_committed_entries(raft_group1, ready.take_committed_entries());
 
     // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
     // raft logs to the latest position.
@@ -252,13 +260,14 @@ fn on_ready(
     }
 
     // Call `RawNode::advance` interface to update position flags in the raft.
-    let mut light_rd = raft_group.advance(ready);
+    let raft_group = Arc::clone(&raft_group);
+    let mut light_rd = raft_group.lock().unwrap().advance(ready);
     // Send out the messages.
     handle_messages(light_rd.take_messages());
     // Apply all committed entries.
-    handle_committed_entries(raft_group, light_rd.take_committed_entries());
+    handle_committed_entries(Arc::clone(&raft_group), light_rd.take_committed_entries());
     // Advance the apply index.
-    raft_group.advance_apply();
+    raft_group.lock().unwrap().advance_apply();
 }
 
 enum Signal {
@@ -329,9 +338,9 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
         let mailboxes = (1..4u64).zip(tx_vec.iter().cloned()).collect();
         let mut node = match i {
             // Peer 1 is the leader.
-            0 => Node::create_raft_leader(1, rx, mailboxes, &logger),
+            0 => Node::create_raft_leader((i + 1) as u64, rx, mailboxes, &logger),
             // Other peers are followers.
-            _ => Node::create_raft_follower(rx, mailboxes),
+            _ => Node::create_raft_follower((i + 1) as u64, rx, mailboxes, &logger),
         };
 
         let raft_group = Arc::clone(&node.raft_group);
@@ -359,18 +368,19 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
                 }
 
                 let raft_group = Arc::clone(&node.raft_group);
-                let ref mut raft_group1 = raft_group.lock().unwrap();
-                let mut raft_group2 = raft_group1.as_mut();
-                let raft_group3 = match raft_group2 {
-                    Some(r) => {
-                        // nodes.insert(i, Arc::clone(&node.raft_group));
-                        r
-                    }
-                    // When Node::raft_group is `None` it means the node is not initialized.
-                    _ => {
-                        continue;
-                    }
-                };
+                // let ref mut raft_group1 = raft_group.lock().unwrap();
+                // let mut raft_group2 = raft_group1.as_mut();
+                // let raft_group3 = match raft_group2 {
+                //     Some(r) => {
+                //         // nodes.insert(i, Arc::clone(&node.raft_group));
+                //         r
+                //     }
+                //     // When Node::raft_group is `None` it means the node is not initialized.
+                //     _ => {
+                //         continue;
+                //     }
+                // };
+                // let mut raft_group = raft_group.lock().unwrap();
 
                 //
                 // let raft_group = match &mut *node.raft_group.lock().unwrap() {
@@ -380,12 +390,12 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
                 // };
 
                 if t.elapsed() >= Duration::from_millis(100) {
-                    raft_group3.tick();
+                    raft_group.lock().unwrap().tick();
                     t = Instant::now();
                 }
 
                 // Let the leader pick pending proposals from the global queue.
-                if raft_group3.raft.state == StateRole::Leader {
+                if raft_group.lock().unwrap().raft.state == StateRole::Leader {
                     // Handle new proposals.
                     let mut proposals = proposals.lock().unwrap();
                     for p in proposals.iter_mut().skip_while(|p| p.proposed > 0) {
@@ -394,13 +404,13 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
                         //     "Get a proposal and I will propose it"
                         // );
                         println!("\nGet a proposal and I will propose it {{ {:?} }}", p);
-                        propose(raft_group3, p);
+                        propose(Arc::clone(&raft_group), p);
                     }
                 }
 
                 // Handle readies from the raft.
                 on_ready(
-                    raft_group3,
+                    raft_group,
                     &mut node.kv_pairs,
                     &node.mailboxes,
                     &proposals,

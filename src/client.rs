@@ -11,6 +11,7 @@ use rand::random;
 
 use proto::kvraft::{DeleteArgs, GetArgs, PutArgs, ScanArgs};
 use proto::kvraft_grpc::KvRaftClient;
+use std::collections::HashMap;
 
 fn read_line_buffer() -> String {
     // Read one line of input buffer-style
@@ -31,12 +32,15 @@ fn print_single_line(text: &str) {
 }
 
 fn main() {
-    const PORT: u16 = 5031;
+    let ports: Arc<Vec<u16>> = Arc::new(vec![5030, 5031, 5032]);
+    let mut leader_id = Arc::new(Mutex::new(1));
+
+    // const PORT: u16 = 5030;
     const CLIENT_ID: i64 = 1;
-    let env = Arc::new(EnvBuilder::new().build());
-    let ch = ChannelBuilder::new(env).connect(format!("localhost:{}", PORT).as_str());
-    // let client = DinerClient::new(ch);
-    let client = KvRaftClient::new(ch);
+    // let env = Arc::new(EnvBuilder::new().build());
+    // let ch = ChannelBuilder::new(env).connect(format!("localhost:{}", ports[*leader_id.lock().unwrap()]).as_str());
+    // let client = KvRaftClient::new(ch);
+
     let mut serial_num = Arc::new(Mutex::new(1));
     loop {
         print_single_line("Please enter command: ");
@@ -65,126 +69,145 @@ fn main() {
                     get_args.set_client_id(CLIENT_ID);
                     get_args.set_key(temp);
                     get_args.set_serial_num(*num);
+                    let mut leader_id = Arc::clone(&leader_id);
+                    loop {
+                        let env = Arc::new(EnvBuilder::new().build());
+                        let ch = ChannelBuilder::new(env).connect(format!("localhost:{}", ports[*leader_id.lock().unwrap()]).as_str());
+                        let client = KvRaftClient::new(ch);
+                        let ok = client.get(&get_args).expect("RPC Failed");
+                        if ok.success {
+                            println!("Get Success: {}, msg: {}, Val: {}", ok.success, ok.msg, ok.val);
+                            break;
+                        } else {
+                            if ok.msg.eq(&String::from("ERROR NO KEY")) {
+                                println!("Get Success: {}, msg: {}, Val: {}", ok.success, ok.msg, ok.val);
+                                break;
+                            } else {
+                                *leader_id.lock().unwrap() += 1;
+                                *leader_id.lock().unwrap() %= 3;
 
-                    let ok = client.get(&get_args).expect("RPC Failed");
-                    println!("Get Success: {}, msg: {}, Val: {}", ok.success, ok.msg, ok.val);
+                                println!("Get Success: {}, msg: {}, Val: {}, retry other server: {}", ok.success, ok.msg, ok.val, *leader_id.lock().unwrap());
+                            }
+                        }
+                    }
                 }
                 Err(_) => {
                     println!("Input i64 key");
                     continue;
                 }
             }
-        } else if commands[0].to_lowercase() == "put" {
-            if commands.len() < 3 {
-                println!("Input put's key and value");
-                continue;
-            }
-            let key = commands[1];
-            let val = commands[2];
-
-            match key.parse::<i64>() {
-                Ok(temp) => {
-                    if temp < 0 {
-                        println!("Input positive integer key");
-                        continue;
-                    }
-
-                    let mut put_args = PutArgs::new();
-                    put_args.set_client_id(CLIENT_ID);
-                    put_args.set_key(temp);
-                    put_args.set_val(String::from(val.clone()));
-
-                    put_args.set_serial_num(*num);
-
-                    let ok = client.put(&put_args).expect("RPC Failed");
-                    println!("Put Success: {}, msg: {}", ok.success, ok.msg);
-                }
-                Err(_) => {
-                    println!("Input i64 key");
-                    continue;
-                }
-            }
-        } else if commands[0].to_lowercase() == "delete" {
-            if commands.len() == 1 {
-                println!("Input delete's key");
-                continue;
-            }
-
-            let mut key = commands[1];
-            match key.parse::<i64>() {
-                Ok(temp) => {
-                    if temp < 0 {
-                        println!("Input positive integer key");
-                        continue;
-                    }
-
-                    let mut delete_args = DeleteArgs::new();
-
-                    delete_args.set_client_id(CLIENT_ID);
-                    delete_args.set_key(temp);
-                    delete_args.set_serial_num(*num);
-
-                    let ok = client.delete(&delete_args).expect("RPC Failed");
-                    println!("Delete Success: {}, msg: {}", ok.success, ok.msg);
-                }
-                Err(_) => {
-                    println!("Input i64 key");
-                    continue;
-                }
-            }
-        } else if commands[0].to_lowercase() == "scan" {
-            if commands.len() == 1 {
-                println!("Input scan's start key and end key");
-                continue;
-            }
-
-            let mut start_index: i64;
-            let mut end_index: i64;
-
-            match commands[1].parse::<i64>() {
-                Ok(temp) => {
-                    start_index = temp;
-                }
-                Err(_) => {
-                    println!("Input i64 start_index");
-                    continue;
-                }
-            }
-
-            let mut scan_args = ScanArgs::new();
-            if commands.len() == 2 {
-                scan_args.set_serial_num(*num);
-                scan_args.set_client_id(CLIENT_ID);
-                scan_args.set_start_key(start_index);
-                scan_args.set_end_key(start_index + 10);
-            }
-
-            if commands.len() == 3 {
-                match commands[2].parse::<i64>() {
-                    Ok(temp) => {
-                        end_index = temp;
-                    }
-                    Err(_) => {
-                        println!("Input i64 end_index");
-                        continue;
-                    }
-                }
-
-                scan_args.set_serial_num(*num);
-                scan_args.set_client_id(CLIENT_ID);
-                scan_args.set_start_key(start_index);
-                if start_index < 0 {
-                    scan_args.set_end_key(-1);
-                } else {
-                    scan_args.set_end_key(start_index + 10);
-                    scan_args.set_end_key(end_index);
-                }
-            }
-
-            let ok = client.scan(&scan_args).expect("RPC Failed");
-            println!("Delete Success: {}, msg: {}, {{ {:?} }}", ok.success, ok.msg, ok.keys);
-        } else if commands[0].to_lowercase() == "exit" {
-            return;
         }
+        // else if commands[0].to_lowercase() == "put" {
+        //     if commands.len() < 3 {
+        //         println!("Input put's key and value");
+        //         continue;
+        //     }
+        //     let key = commands[1];
+        //     let val = commands[2];
+        //
+        //     match key.parse::<i64>() {
+        //         Ok(temp) => {
+        //             if temp < 0 {
+        //                 println!("Input positive integer key");
+        //                 continue;
+        //             }
+        //
+        //             let mut put_args = PutArgs::new();
+        //             put_args.set_client_id(CLIENT_ID);
+        //             put_args.set_key(temp);
+        //             put_args.set_val(String::from(val.clone()));
+        //
+        //             put_args.set_serial_num(*num);
+        //
+        //             let ok = client.put(&put_args).expect("RPC Failed");
+        //             println!("Put Success: {}, msg: {}", ok.success, ok.msg);
+        //         }
+        //         Err(_) => {
+        //             println!("Input i64 key");
+        //             continue;
+        //         }
+        //     }
+        // } else if commands[0].to_lowercase() == "delete" {
+        //     if commands.len() == 1 {
+        //         println!("Input delete's key");
+        //         continue;
+        //     }
+        //
+        //     let mut key = commands[1];
+        //     match key.parse::<i64>() {
+        //         Ok(temp) => {
+        //             if temp < 0 {
+        //                 println!("Input positive integer key");
+        //                 continue;
+        //             }
+        //
+        //             let mut delete_args = DeleteArgs::new();
+        //
+        //             delete_args.set_client_id(CLIENT_ID);
+        //             delete_args.set_key(temp);
+        //             delete_args.set_serial_num(*num);
+        //
+        //             let ok = client.delete(&delete_args).expect("RPC Failed");
+        //             println!("Delete Success: {}, msg: {}", ok.success, ok.msg);
+        //         }
+        //         Err(_) => {
+        //             println!("Input i64 key");
+        //             continue;
+        //         }
+        //     }
+        // } else if commands[0].to_lowercase() == "scan" {
+        //     if commands.len() == 1 {
+        //         println!("Input scan's start key and end key");
+        //         continue;
+        //     }
+        //
+        //     let mut start_index: i64;
+        //     let mut end_index: i64;
+        //
+        //     match commands[1].parse::<i64>() {
+        //         Ok(temp) => {
+        //             start_index = temp;
+        //         }
+        //         Err(_) => {
+        //             println!("Input i64 start_index");
+        //             continue;
+        //         }
+        //     }
+        //
+        //     let mut scan_args = ScanArgs::new();
+        //     if commands.len() == 2 {
+        //         scan_args.set_serial_num(*num);
+        //         scan_args.set_client_id(CLIENT_ID);
+        //         scan_args.set_start_key(start_index);
+        //         scan_args.set_end_key(start_index + 10);
+        //     }
+        //
+        //     if commands.len() == 3 {
+        //         match commands[2].parse::<i64>() {
+        //             Ok(temp) => {
+        //                 end_index = temp;
+        //             }
+        //             Err(_) => {
+        //                 println!("Input i64 end_index");
+        //                 continue;
+        //             }
+        //         }
+        //
+        //         scan_args.set_serial_num(*num);
+        //         scan_args.set_client_id(CLIENT_ID);
+        //         scan_args.set_start_key(start_index);
+        //         if start_index < 0 {
+        //             scan_args.set_end_key(-1);
+        //         } else {
+        //             scan_args.set_end_key(start_index + 10);
+        //             scan_args.set_end_key(end_index);
+        //         }
+        //     }
+        //
+        //     let ok = client.scan(&scan_args).expect("RPC Failed");
+        //     println!("Delete Success: {}, msg: {}, {{ {:?} }}", ok.success, ok.msg, ok.keys);
+        // } else if commands[0].to_lowercase() == "exit" {
+        //     return;
+        // }
     }
 }
