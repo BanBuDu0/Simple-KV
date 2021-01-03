@@ -3,38 +3,30 @@ extern crate grpcio;
 extern crate proto;
 extern crate raft;
 extern crate raft_proto;
-// #[macro_use]
 extern crate slog;
 extern crate slog_term;
 
 use std::{io, str, thread};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
 
-use encoding::Encoding;
 use futures::{FutureExt, TryFutureExt};
 use futures::channel::oneshot;
 use futures::executor::block_on;
 use grpcio::{Environment, RpcContext, ServerBuilder, UnarySink};
-use protobuf::RepeatedField;
 use raft::RawNode;
 use raft::storage::MemStorage;
-use raft_proto::eraftpb::*;
-use raft::{prelude::*, StateRole};
+use raft::StateRole;
 
 use proto::kvraft::{DeleteArgs, GetArgs, PutArgs, ScanArgs};
 use proto::kvraft::{DeleteReply, GetReply, PutReply, ScanReply};
 use proto::kvraft_grpc::{self, KvRaft};
 
-use crate::Node;
 use crate::proposal::Proposal;
 
 //server host
 const HOST: &str = "127.0.0.1";
-//raft node num
-const NUM_NODES: u32 = 3;
 const ERR_LEADER: &str = "ERROR WRONG LEADER";
 const ERR_KEY: &str = "ERROR NO KEY";
 
@@ -86,11 +78,11 @@ impl Clone for KvRaftService {
 init the KvRaftService
 **/
 impl KvRaftService {
-    fn new(p: Arc<Mutex<VecDeque<Proposal>>>, n: Arc<Mutex<RawNode<MemStorage>>>) -> Self {
+    fn new(p: Arc<Mutex<VecDeque<Proposal>>>, n: Arc<Mutex<RawNode<MemStorage>>>, s: Arc<Mutex<HashMap<i64, String>>>) -> Self {
         Self {
             // mu: Mutex::new(KvRaftService),
             client_last_seq: Default::default(),
-            db: Arc::new(Mutex::new(HashMap::new())),
+            db: s,
             proposals: p,
             node: n,
             // kv_pairs: Default::default(),
@@ -103,7 +95,9 @@ impl KvRaftService {
 start grpc server for client
 **/
 pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>,
-                       nodes: HashMap<usize, Arc<Mutex<RawNode<MemStorage>>>>) {
+                       nodes: HashMap<usize, Arc<Mutex<RawNode<MemStorage>>>>,
+                       stores: HashMap<usize, Arc<Mutex<HashMap<i64, String>>>>,
+) {
     // (0..10u16)
     //     .filter(|i| {
     //         let (proposal, rx) = Proposal::normal(String::from(i.to_string()), "hello, world".to_owned());
@@ -116,8 +110,10 @@ pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>,
     //     .count();
     let port: Arc<Vec<u16>> = Arc::new(vec![5030, 5031, 5032]);
     let mut handles = Vec::new();
-    for node in nodes {
-        let raft_group = Arc::clone(&node.1);
+    for i in 0..3usize {
+        let raft_group = Arc::clone(&nodes.get(&i).unwrap());
+        // let store = stores.get(&i);
+        let store = Arc::clone(&stores.get(&i).unwrap());
         // let ref mut raft_group1 = raft_group.lock().unwrap();
         // let mut raft_group2 = raft_group1.as_mut();
         // let raft_group2 = match raft_group2 {
@@ -136,14 +132,12 @@ pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>,
         let port = Arc::clone(&port);
         let handle = thread::spawn(move || {
             let env = Arc::new(Environment::new(1));
-            let mut kv_raft_server = KvRaftService::new(proposals, raft_group);
-            // kv_raft_server.proposals = proposals;
-            // kv_raft_server.node = raft_group;
-            read_persist();
+            let kv_raft_server = KvRaftService::new(proposals, raft_group, store);
+
             let service = kvraft_grpc::create_kv_raft(kv_raft_server);
             let mut server = ServerBuilder::new(env)
                 .register_service(service)
-                .bind(HOST, port[node.0])
+                .bind(HOST, port[i])
                 .build()
                 .unwrap();
             server.start();
@@ -162,6 +156,7 @@ pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>,
         );
         handles.push(handle);
     }
+    // for node in nodes {}
 
     // Wait for the thread to finish
     for th in handles {
@@ -169,9 +164,6 @@ pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>,
     }
 }
 
-fn read_persist() {}
-
-fn persist() {}
 
 /**
 implement KvRaft Method in KvRaftService
@@ -216,24 +208,31 @@ impl KvRaft for KvRaftService {
     fn put(&mut self, ctx: RpcContext, args: PutArgs, sink: UnarySink<PutReply>) {
         println!("Received Put request {{ {:?} }}", args);
         let mut put_reply = PutReply::new();
-        let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
-        self.proposals.lock().unwrap().push_back(proposal);
 
-        if rx.recv().unwrap() {
-            put_reply.set_success(true);
-            let db = &mut self.db;
-            db.lock().unwrap().insert(args.key.clone(), args.val.clone());
-            // self.db.insert(args.key.clone(), args.val.clone());
-            persist();
-        } else {
+        let raft_group = Arc::clone(&self.node);
+        // let raft_group = raft_group.lock().unwrap();
+        // let raft_group = raft_group.unwrap();
+        if raft_group.lock().unwrap().raft.state != StateRole::Leader {
             put_reply.set_success(false);
             put_reply.set_msg(String::from(ERR_LEADER));
-        }
+        } else {
+            let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
+            self.proposals.lock().unwrap().push_back(proposal);
 
-        if let Some(val) = self.db.lock().unwrap().get(&args.key) {
-            println!("key: {}, val: {}", args.key, val);
-        }
+            if rx.recv().unwrap() {
+                put_reply.set_success(true);
+                let db = &mut self.db;
+                db.lock().unwrap().insert(args.key.clone(), args.val.clone());
+                // self.db.insert(args.key.clone(), args.val.clone());
+            } else {
+                put_reply.set_success(false);
+                put_reply.set_msg(String::from(ERR_LEADER));
+            }
 
+            // if let Some(val) = self.db.lock().unwrap().get(&args.key) {
+            //     println!("key: {}, val: {}", args.key, val);
+            // }
+        }
 
         let f = sink.success(put_reply.clone())
             .map_err(move |err| eprintln!("Failed to reply: {:?}", err))
@@ -245,16 +244,23 @@ impl KvRaft for KvRaftService {
         println!("Received Delete request {{ {:?} }}", args);
         let mut delete_reply = DeleteReply::new();
 
-        let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
-        self.proposals.lock().unwrap().push_back(proposal);
-
-        if rx.recv().unwrap() {
-            delete_reply.set_success(true);
-            self.db.lock().unwrap().remove(&args.get_key());
-            persist();
-        } else {
+        let raft_group = Arc::clone(&self.node);
+        // let raft_group = raft_group.lock().unwrap();
+        // let raft_group = raft_group.unwrap();
+        if raft_group.lock().unwrap().raft.state != StateRole::Leader {
             delete_reply.set_success(false);
             delete_reply.set_msg(String::from(ERR_LEADER));
+        } else {
+            let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
+            self.proposals.lock().unwrap().push_back(proposal);
+
+            if rx.recv().unwrap() {
+                delete_reply.set_success(true);
+                self.db.lock().unwrap().remove(&args.get_key());
+            } else {
+                delete_reply.set_success(false);
+                delete_reply.set_msg(String::from(ERR_LEADER));
+            }
         }
 
         let f = sink.success(delete_reply.clone())
@@ -267,22 +273,29 @@ impl KvRaft for KvRaftService {
     fn scan(&mut self, ctx: RpcContext, args: ScanArgs, sink: UnarySink<ScanReply>) {
         println!("Received Scan request {{ {:?} }}", args);
         let mut scan_reply = ScanReply::new();
-
-        let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
-        self.proposals.lock().unwrap().push_back(proposal);
-        if rx.recv().unwrap() {
-            let mut res = Vec::new();
-            for (&key, _) in self.db.lock().unwrap().iter() {
-                if (key >= args.start_key && key < args.end_key) || args.start_key == -1 {
-                    res.push(key);
-                }
-            }
-            res.sort();
-            scan_reply.set_success(true);
-            scan_reply.set_keys(res);
-        } else {
-            scan_reply.set_success(true);
+        let raft_group = Arc::clone(&self.node);
+        // let raft_group = raft_group.lock().unwrap();
+        // let raft_group = raft_group.unwrap();
+        if raft_group.lock().unwrap().raft.state != StateRole::Leader {
+            scan_reply.set_success(false);
             scan_reply.set_msg(String::from(ERR_LEADER));
+        } else {
+            let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
+            self.proposals.lock().unwrap().push_back(proposal);
+            if rx.recv().unwrap() {
+                let mut res = Vec::new();
+                for (&key, _) in self.db.lock().unwrap().iter() {
+                    if (key >= args.start_key && key < args.end_key) || args.start_key == -1 {
+                        res.push(key);
+                    }
+                }
+                res.sort();
+                scan_reply.set_success(true);
+                scan_reply.set_keys(res);
+            } else {
+                scan_reply.set_success(true);
+                scan_reply.set_msg(String::from(ERR_LEADER));
+            }
         }
         let f = sink.success(scan_reply.clone())
             .map_err(move |err| eprintln!("Failed to reply: {:?}", err))

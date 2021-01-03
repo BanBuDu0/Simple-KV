@@ -9,8 +9,7 @@ extern crate slog_term;
 
 use std::{str, thread};
 use std::collections::{HashMap, VecDeque};
-use std::hash::Hash;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::{Duration, Instant};
 
@@ -18,7 +17,6 @@ use protobuf::Message as PbMessage;
 use raft::{Config, raw_node::RawNode};
 use raft::{prelude::*, StateRole};
 use raft::storage::MemStorage;
-use raft_proto::eraftpb::*;
 use regex::Regex;
 use slog::Drain;
 
@@ -208,7 +206,7 @@ fn on_ready(
         }
     }
 
-    let mut handle_committed_entries =
+    let handle_committed_entries =
         |rn: Arc<Mutex<RawNode<MemStorage>>>, committed_entries: Vec<Entry>| {
             for entry in committed_entries {
                 if entry.data.is_empty() {
@@ -328,6 +326,7 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
     // let proposals = Arc::new(Mutex::new(VecDeque::<Proposal>::new()));
 
     let mut nodes = HashMap::new();
+    let mut stores = HashMap::new();
 
     //保存了每个raft node的处理线程
     let mut handles = Vec::new();
@@ -344,7 +343,9 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
         };
 
         let raft_group = Arc::clone(&node.raft_group);
+        let kv_store = Arc::clone(&node.kv_pairs);
         nodes.insert(i, raft_group);
+        stores.insert(i, kv_store);
 
         let proposals = Arc::clone(&proposals);
         // Tick the raft node per 100ms. So use an `Instant` to trace it.
@@ -437,7 +438,7 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
 
     thread::sleep(Duration::from_secs(3));
 
-    maintain_server(proposals, nodes);
+    maintain_server(proposals, nodes, stores);
 
     // (0..10u16)
     //     .filter(|i| {
