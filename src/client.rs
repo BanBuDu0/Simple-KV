@@ -86,7 +86,7 @@ fn main() {
                                 *leader_id.lock().unwrap() += 1;
                                 *leader_id.lock().unwrap() %= 3;
 
-                                println!("Get Success: {}, msg: {}, Val: {}, retry other server: {}", ok.success, ok.msg, ok.val, *leader_id.lock().unwrap());
+                                println!("Get Success: {}, msg: {}, Val: {}, retry other server: {}", ok.success, ok.msg, ok.val, *leader_id.lock().unwrap() + 1);
                             }
                         }
                     }
@@ -127,7 +127,7 @@ fn main() {
                         } else {
                             *leader_id.lock().unwrap() += 1;
                             *leader_id.lock().unwrap() %= 3;
-                            println!("Put Success: {}, msg: {}, retry other server: {}", ok.success, ok.msg, *leader_id.lock().unwrap());
+                            println!("Put Success: {}, msg: {}, retry other server: {}", ok.success, ok.msg, *leader_id.lock().unwrap() + 1);
                         }
                     }
                 }
@@ -145,10 +145,10 @@ fn main() {
             let key = commands[1];
             match key.parse::<i64>() {
                 Ok(temp) => {
-                    if temp < 0 {
-                        println!("Input positive integer key");
-                        continue;
-                    }
+                    // if temp < 0 {
+                    //     println!("Input positive integer key");
+                    //     continue;
+                    // }
 
                     let mut delete_args = DeleteArgs::new();
 
@@ -167,7 +167,7 @@ fn main() {
                         } else {
                             *leader_id.lock().unwrap() += 1;
                             *leader_id.lock().unwrap() %= 3;
-                            println!("Delete Success: {}, msg: {}, retry other server: {}", ok.success, ok.msg, *leader_id.lock().unwrap());
+                            println!("Delete Success: {}, msg: {}, retry other server: {}", ok.success, ok.msg, *leader_id.lock().unwrap() + 1);
                         }
                     }
                 }
@@ -236,12 +236,12 @@ fn main() {
                 } else {
                     *leader_id.lock().unwrap() += 1;
                     *leader_id.lock().unwrap() %= 3;
-                    println!("Scan Success: {}, msg: {}, retry other server: {}", ok.success, ok.msg, *leader_id.lock().unwrap());
+                    println!("Scan Success: {}, msg: {}, retry other server: {}", ok.success, ok.msg, *leader_id.lock().unwrap() + 1);
                 }
             }
         } else if commands[0].to_lowercase() == "exit" {
             return;
-        }else{
+        } else {
             println!("Command");
             println!("put i64 String");
             println!("get i64");

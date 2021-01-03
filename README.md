@@ -42,5 +42,6 @@
 ## introduce
 
 ~~One Server with three raft backend. TODO: each raft backend has it's own server~~
+
 one server per raft backend. TODO: persist raft node's data
 

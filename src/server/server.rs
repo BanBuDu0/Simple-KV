@@ -24,11 +24,16 @@ use proto::kvraft::{DeleteReply, GetReply, PutReply, ScanReply};
 use proto::kvraft_grpc::{self, KvRaft};
 
 use crate::proposal::Proposal;
+use std::sync::mpsc::Sender;
+use crate::Signal;
+use std::time::{Instant, Duration};
 
 //server host
 const HOST: &str = "127.0.0.1";
 const ERR_LEADER: &str = "ERROR WRONG LEADER";
 const ERR_KEY: &str = "ERROR NO KEY";
+const SUCCESS_KILL_NODE: &str = "SUCCESS KILL ONE RAFT NODE";
+const TIMEOUT: &str = "ERROR TIMEOUT";
 
 
 // #[derive(Clone)]
@@ -51,6 +56,7 @@ struct KvRaftService {
     proposals: Arc<Mutex<VecDeque<Proposal>>>,
 
     node: Arc<Mutex<RawNode<MemStorage>>>,
+    stop_signal: Arc<Mutex<Sender<Signal>>>,
 }
 
 
@@ -61,6 +67,7 @@ impl Clone for KvRaftService {
             db: self.db.clone(),
             proposals: self.proposals.clone(),
             node: self.node.clone(),
+            stop_signal: self.stop_signal.clone(),
         };
         temp
     }
@@ -70,6 +77,7 @@ impl Clone for KvRaftService {
         self.client_last_seq = source.client_last_seq.clone();
         self.proposals = source.proposals.clone();
         self.node = source.node.clone();
+        self.stop_signal = source.stop_signal.clone();
     }
 }
 
@@ -78,13 +86,17 @@ impl Clone for KvRaftService {
 init the KvRaftService
 **/
 impl KvRaftService {
-    fn new(p: Arc<Mutex<VecDeque<Proposal>>>, n: Arc<Mutex<RawNode<MemStorage>>>, s: Arc<Mutex<HashMap<i64, String>>>) -> Self {
+    fn new(p: Arc<Mutex<VecDeque<Proposal>>>,
+           n: Arc<Mutex<RawNode<MemStorage>>>,
+           s: Arc<Mutex<HashMap<i64, String>>>,
+           sig: Arc<Mutex<Sender<Signal>>>) -> Self {
         Self {
             // mu: Mutex::new(KvRaftService),
             client_last_seq: Default::default(),
             db: s,
             proposals: p,
             node: n,
+            stop_signal: sig,
             // kv_pairs: Default::default(),
             // agree_chs: Default::default(),
         }
@@ -97,6 +109,7 @@ start grpc server for client
 pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>,
                        nodes: HashMap<usize, Arc<Mutex<RawNode<MemStorage>>>>,
                        stores: HashMap<usize, Arc<Mutex<HashMap<i64, String>>>>,
+                       stop_sig: Sender<Signal>,
 ) {
     // (0..10u16)
     //     .filter(|i| {
@@ -110,6 +123,7 @@ pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>,
     //     .count();
     let port: Arc<Vec<u16>> = Arc::new(vec![5030, 5031, 5032]);
     let mut handles = Vec::new();
+    let stop = Arc::new(Mutex::new(stop_sig));
     for i in 0..3usize {
         let raft_group = Arc::clone(&nodes.get(&i).unwrap());
         // let store = stores.get(&i);
@@ -130,9 +144,10 @@ pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>,
 
         let proposals = Arc::clone(&proposals);
         let port = Arc::clone(&port);
+        let stop = Arc::clone(&stop);
         let handle = thread::spawn(move || {
             let env = Arc::new(Environment::new(1));
-            let kv_raft_server = KvRaftService::new(proposals, raft_group, store);
+            let kv_raft_server = KvRaftService::new(proposals, raft_group, store, stop);
 
             let service = kvraft_grpc::create_kv_raft(kv_raft_server);
             let mut server = ServerBuilder::new(env)
@@ -255,8 +270,22 @@ impl KvRaft for KvRaftService {
             self.proposals.lock().unwrap().push_back(proposal);
 
             if rx.recv().unwrap() {
-                delete_reply.set_success(true);
-                self.db.lock().unwrap().remove(&args.get_key());
+                // /// if delete key < 0, it means delete one raft node
+                // if t.elapsed() >= Duration::from_secs(5) {
+                //     ///进入这里的是超时且没有受到消息
+                //     delete_reply.set_success(false);
+                //     delete_reply.set_msg(String::from(TIMEOUT));
+                // } else {
+                ///这里是正常收到消息
+                if args.key < 0 {
+                    self.stop_signal.lock().unwrap().send(Signal::Terminate).unwrap();
+                    println!("kill: {}", self.node.lock().unwrap().raft.id);
+                    delete_reply.set_success(true);
+                    delete_reply.set_msg(String::from(SUCCESS_KILL_NODE));
+                } else {
+                    delete_reply.set_success(true);
+                    self.db.lock().unwrap().remove(&args.get_key());
+                }
             } else {
                 delete_reply.set_success(false);
                 delete_reply.set_msg(String::from(ERR_LEADER));

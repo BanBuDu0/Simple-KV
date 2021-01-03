@@ -129,7 +129,7 @@ fn is_initial_msg(msg: &Message) -> bool {
     let msg_type = msg.get_msg_type();
     msg_type == MessageType::MsgRequestVote
         || msg_type == MessageType::MsgRequestPreVote
-        // || (msg_type == MessageType::MsgHeartbeat && msg.commit == 0)
+    // || (msg_type == MessageType::MsgHeartbeat && msg.commit == 0)
 }
 
 fn propose(raft_group: Arc<Mutex<RawNode<MemStorage>>>, proposal: &mut Proposal) {
@@ -268,7 +268,7 @@ fn on_ready(
     raft_group.lock().unwrap().advance_apply();
 }
 
-enum Signal {
+pub enum Signal {
     Terminate,
 }
 
@@ -432,13 +432,13 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
     // Put 100 key-value pairs.
     info!(
         logger,
-        "We get a 3 nodes Raft cluster now, now propose 100 proposals"
+        "We get a 3 nodes Raft cluster now, now start KV Server"
     );
 
 
-    thread::sleep(Duration::from_secs(3));
+    // thread::sleep(Duration::from_secs(3));
 
-    maintain_server(proposals, nodes, stores);
+    maintain_server(proposals, nodes, stores, tx_stop);
 
     // (0..10u16)
     //     .filter(|i| {
