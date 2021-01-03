@@ -22,6 +22,7 @@ use slog::Drain;
 
 use crate::proposal::Proposal;
 use crate::server::maintain_server;
+use futures_util::__private::Option::Some;
 
 mod server;
 mod proposal;
@@ -135,8 +136,13 @@ fn is_initial_msg(msg: &Message) -> bool {
 fn propose(raft_group: Arc<Mutex<RawNode<MemStorage>>>, proposal: &mut Proposal) {
     let last_index1 = raft_group.lock().unwrap().raft.raft_log.last_index() + 1;
     if let Some((ref key, ref value)) = proposal.normal {
-        let data = format!("put {} {}", key, value).into_bytes();
-        let _ = raft_group.lock().unwrap().propose(vec![], data);
+        if value.eq("delete") {
+            let data = format!("delete {}", key).into_bytes();
+            let _ = raft_group.lock().unwrap().propose(vec![], data);
+        } else {
+            let data = format!("put {} {}", key, value).into_bytes();
+            let _ = raft_group.lock().unwrap().propose(vec![], data);
+        }
     } else if let Some(ref cc) = proposal.conf_change {
         let _ = raft_group.lock().unwrap().propose_conf_change(vec![], cc.clone());
     } else if let Some(_transferee) = proposal.transfer_leader {
@@ -224,10 +230,17 @@ fn on_ready(
                     // insert them into the kv engine.
                     let data = str::from_utf8(&entry.data).unwrap();
                     let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
-                    // let reg = Regex::new("put (.+) (.+)").unwrap();
+                    let reg2 = Regex::new("delete ([0-9]+)").unwrap();
                     if let Some(caps) = reg.captures(&data) {
-                        kv_pairs.lock().unwrap().insert(caps[1].parse().unwrap(), caps[2].to_string());
+                        let t1 = caps[1].parse().unwrap();
+                        let t2 = caps[2].to_string();
+                        println!("insert key: {}, val: {}", t1, t2);
+                        kv_pairs.lock().unwrap().insert(t1, t2);
                         // kv_pairs.insert(caps[1].to_string(), caps[2].to_string());
+                    } else if let Some(caps2) = reg2.captures(&data) {
+                        let t1 = caps2[1].parse().unwrap();
+                        kv_pairs.lock().unwrap().remove(&t1);
+                        println!("remove key: {}", t1);
                     }
                 }
                 if rn.lock().unwrap().raft.state == StateRole::Leader {

@@ -188,14 +188,12 @@ impl KvRaft for KvRaftService {
         println!("Received Get request {{ {:?} }}", args);
         let mut get_reply = GetReply::new();
 
-        let raft_group = Arc::clone(&self.node);
-        // let raft_group = raft_group.lock().unwrap();
-        // let raft_group = raft_group.unwrap();
+        let raft_group = Arc::clone(&self.node);;
         if raft_group.lock().unwrap().raft.state != StateRole::Leader {
             get_reply.set_success(false);
             get_reply.set_msg(String::from(ERR_LEADER));
         } else {
-            let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
+            let (proposal, rx) = Proposal::normal(String::from(""), String::from(""));
             self.proposals.lock().unwrap().push_back(proposal);
 
             if rx.recv().unwrap() {
@@ -225,28 +223,20 @@ impl KvRaft for KvRaftService {
         let mut put_reply = PutReply::new();
 
         let raft_group = Arc::clone(&self.node);
-        // let raft_group = raft_group.lock().unwrap();
-        // let raft_group = raft_group.unwrap();
         if raft_group.lock().unwrap().raft.state != StateRole::Leader {
             put_reply.set_success(false);
             put_reply.set_msg(String::from(ERR_LEADER));
         } else {
-            let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
+            let (proposal, rx) = Proposal::normal(args.key.to_string(), args.val.clone());
             self.proposals.lock().unwrap().push_back(proposal);
 
             if rx.recv().unwrap() {
                 put_reply.set_success(true);
-                let db = &mut self.db;
-                db.lock().unwrap().insert(args.key.clone(), args.val.clone());
-                // self.db.insert(args.key.clone(), args.val.clone());
             } else {
                 put_reply.set_success(false);
                 put_reply.set_msg(String::from(ERR_LEADER));
             }
 
-            // if let Some(val) = self.db.lock().unwrap().get(&args.key) {
-            //     println!("key: {}, val: {}", args.key, val);
-            // }
         }
 
         let f = sink.success(put_reply.clone())
@@ -260,23 +250,14 @@ impl KvRaft for KvRaftService {
         let mut delete_reply = DeleteReply::new();
 
         let raft_group = Arc::clone(&self.node);
-        // let raft_group = raft_group.lock().unwrap();
-        // let raft_group = raft_group.unwrap();
         if raft_group.lock().unwrap().raft.state != StateRole::Leader {
             delete_reply.set_success(false);
             delete_reply.set_msg(String::from(ERR_LEADER));
         } else {
-            let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
+            let (proposal, rx) = Proposal::normal(args.get_key().to_string(), String::from("delete"));
             self.proposals.lock().unwrap().push_back(proposal);
 
             if rx.recv().unwrap() {
-                // /// if delete key < 0, it means delete one raft node
-                // if t.elapsed() >= Duration::from_secs(5) {
-                //     ///进入这里的是超时且没有受到消息
-                //     delete_reply.set_success(false);
-                //     delete_reply.set_msg(String::from(TIMEOUT));
-                // } else {
-                ///这里是正常收到消息
                 if args.key < 0 {
                     self.stop_signal.lock().unwrap().send(Signal::Terminate).unwrap();
                     println!("kill: {}", self.node.lock().unwrap().raft.id);
@@ -284,7 +265,6 @@ impl KvRaft for KvRaftService {
                     delete_reply.set_msg(String::from(SUCCESS_KILL_NODE));
                 } else {
                     delete_reply.set_success(true);
-                    self.db.lock().unwrap().remove(&args.get_key());
                 }
             } else {
                 delete_reply.set_success(false);
@@ -303,13 +283,11 @@ impl KvRaft for KvRaftService {
         println!("Received Scan request {{ {:?} }}", args);
         let mut scan_reply = ScanReply::new();
         let raft_group = Arc::clone(&self.node);
-        // let raft_group = raft_group.lock().unwrap();
-        // let raft_group = raft_group.unwrap();
         if raft_group.lock().unwrap().raft.state != StateRole::Leader {
             scan_reply.set_success(false);
             scan_reply.set_msg(String::from(ERR_LEADER));
         } else {
-            let (proposal, rx) = Proposal::normal(args.get_client_id().to_string(), args.get_serial_num().to_string());
+            let (proposal, rx) = Proposal::normal(String::from(""), String::from(""));
             self.proposals.lock().unwrap().push_back(proposal);
             if rx.recv().unwrap() {
                 let mut res = Vec::new();
