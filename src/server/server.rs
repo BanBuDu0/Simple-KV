@@ -53,9 +53,12 @@ struct KvRaftService {
     **/
     db: Arc<Mutex<HashMap<i64, String>>>,
 
+    /// a common proposals queue, use to propose proposal
     proposals: Arc<Mutex<VecDeque<Proposal>>>,
 
+    /// one raft node per server
     node: Arc<Mutex<RawNode<MemStorage>>>,
+    /// use to stop a raft node
     stop_signal: Arc<Mutex<Sender<Signal>>>,
 }
 
@@ -91,14 +94,11 @@ impl KvRaftService {
            s: Arc<Mutex<HashMap<i64, String>>>,
            sig: Arc<Mutex<Sender<Signal>>>) -> Self {
         Self {
-            // mu: Mutex::new(KvRaftService),
             client_last_seq: Default::default(),
             db: s,
             proposals: p,
             node: n,
             stop_signal: sig,
-            // kv_pairs: Default::default(),
-            // agree_chs: Default::default(),
         }
     }
 }
@@ -111,36 +111,12 @@ pub fn maintain_server(proposals: Arc<Mutex<VecDeque<Proposal>>>,
                        stores: HashMap<usize, Arc<Mutex<HashMap<i64, String>>>>,
                        stop_sig: Sender<Signal>,
 ) {
-    // (0..10u16)
-    //     .filter(|i| {
-    //         let (proposal, rx) = Proposal::normal(String::from(i.to_string()), "hello, world".to_owned());
-    //         proposals.lock().unwrap().push_back(proposal);
-    //         println!("\nproposal {}\n", i);
-    //         // After we got a response from `rx`, we can assume the put succeeded and following
-    //         // `get` operations can find the key-value pair.
-    //         rx.recv().unwrap()
-    //     })
-    //     .count();
     let port: Arc<Vec<u16>> = Arc::new(vec![5030, 5031, 5032]);
     let mut handles = Vec::new();
     let stop = Arc::new(Mutex::new(stop_sig));
     for i in 0..3usize {
         let raft_group = Arc::clone(&nodes.get(&i).unwrap());
-        // let store = stores.get(&i);
         let store = Arc::clone(&stores.get(&i).unwrap());
-        // let ref mut raft_group1 = raft_group.lock().unwrap();
-        // let mut raft_group2 = raft_group1.as_mut();
-        // let raft_group2 = match raft_group2 {
-        //     Some(ref mut r) => {
-        //         println!("{} init", node.0);
-        //         r
-        //     },
-        //     // When Node::raft_group is `None` it means the node is not initialized.
-        //     _ => {
-        //         println!("{} not init", node.0);
-        //         continue
-        //     },
-        // };
 
         let proposals = Arc::clone(&proposals);
         let port = Arc::clone(&port);
@@ -188,7 +164,8 @@ impl KvRaft for KvRaftService {
         println!("Received Get request {{ {:?} }}", args);
         let mut get_reply = GetReply::new();
 
-        let raft_group = Arc::clone(&self.node);;
+        let raft_group = Arc::clone(&self.node);
+        ;
         if raft_group.lock().unwrap().raft.state != StateRole::Leader {
             get_reply.set_success(false);
             get_reply.set_msg(String::from(ERR_LEADER));
@@ -231,12 +208,12 @@ impl KvRaft for KvRaftService {
             self.proposals.lock().unwrap().push_back(proposal);
 
             if rx.recv().unwrap() {
+                /// insert operation: raft_node.rs 238
                 put_reply.set_success(true);
             } else {
                 put_reply.set_success(false);
                 put_reply.set_msg(String::from(ERR_LEADER));
             }
-
         }
 
         let f = sink.success(put_reply.clone())
@@ -264,6 +241,7 @@ impl KvRaft for KvRaftService {
                     delete_reply.set_success(true);
                     delete_reply.set_msg(String::from(SUCCESS_KILL_NODE));
                 } else {
+                    /// delete operation: raft_node.rs 243
                     delete_reply.set_success(true);
                 }
             } else {

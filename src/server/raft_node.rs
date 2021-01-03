@@ -382,26 +382,6 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
                 }
 
                 let raft_group = Arc::clone(&node.raft_group);
-                // let ref mut raft_group1 = raft_group.lock().unwrap();
-                // let mut raft_group2 = raft_group1.as_mut();
-                // let raft_group3 = match raft_group2 {
-                //     Some(r) => {
-                //         // nodes.insert(i, Arc::clone(&node.raft_group));
-                //         r
-                //     }
-                //     // When Node::raft_group is `None` it means the node is not initialized.
-                //     _ => {
-                //         continue;
-                //     }
-                // };
-                // let mut raft_group = raft_group.lock().unwrap();
-
-                //
-                // let raft_group = match &mut *node.raft_group.lock().unwrap() {
-                //     Some(ref mut r) => r,
-                //     // When Node::raft_group is `None` it means the node is not initialized.
-                //     _ => continue,
-                // };
 
                 if t.elapsed() >= Duration::from_millis(100) {
                     raft_group.lock().unwrap().tick();
@@ -413,11 +393,10 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
                     // Handle new proposals.
                     let mut proposals = proposals.lock().unwrap();
                     for p in proposals.iter_mut().skip_while(|p| p.proposed > 0) {
-                        // info!(
-                        //     logger,
-                        //     "Get a proposal and I will propose it"
-                        // );
-                        println!("\nGet a proposal and I will propose it {{ {:?} }}", p);
+                        info!(
+                            logger,
+                            "Get a proposal and I will propose it  {{ {:?} }}", p
+                        );
                         propose(Arc::clone(&raft_group), p);
                     }
                 }
