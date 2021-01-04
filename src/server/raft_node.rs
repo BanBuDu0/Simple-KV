@@ -64,6 +64,7 @@ impl Node {
         s.mut_metadata().term = 1;
         s.mut_metadata().mut_conf_state().voters = vec![1];
         let storage = MemStorage::new();
+        let stora = MemStorage::from()
         storage.wl().apply_snapshot(s).unwrap();
         let raft_group = RawNode::new(&cfg, storage, &logger).unwrap();
         let raft_group = Arc::new(Mutex::new(raft_group));
@@ -251,9 +252,8 @@ fn on_ready(
                 }
             }
         };
-    let raft_group1 = Arc::clone(&raft_group);
     // Apply all committed entries.
-    handle_committed_entries(raft_group1, ready.take_committed_entries());
+    handle_committed_entries(Arc::clone(&raft_group), ready.take_committed_entries());
 
     // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
     // raft logs to the latest position.
