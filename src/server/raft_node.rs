@@ -64,8 +64,10 @@ impl Node {
         s.mut_metadata().term = 1;
         s.mut_metadata().mut_conf_state().voters = vec![1];
         let storage = MemStorage::new();
-        let stora = MemStorage::from()
+        // let stora = MemStorage::from()
+
         storage.wl().apply_snapshot(s).unwrap();
+
         let raft_group = RawNode::new(&cfg, storage, &logger).unwrap();
         let raft_group = Arc::new(Mutex::new(raft_group));
         Node {
@@ -137,12 +139,25 @@ fn is_initial_msg(msg: &Message) -> bool {
 fn propose(raft_group: Arc<Mutex<RawNode<MemStorage>>>, proposal: &mut Proposal) {
     let last_index1 = raft_group.lock().unwrap().raft.raft_log.last_index() + 1;
     if let Some((ref key, ref value)) = proposal.normal {
-        if value.eq("delete") {
-            let data = format!("delete {}", key).into_bytes();
-            let _ = raft_group.lock().unwrap().propose(vec![], data);
-        } else {
-            let data = format!("put {} {}", key, value).into_bytes();
-            let _ = raft_group.lock().unwrap().propose(vec![], data);
+        /// 0-none, 1-put, 2-get, 3-delete, 4-scan
+        match proposal.op_type {
+            1 =>{
+                let data = format!("put {} {}", key, value).into_bytes();
+                let _ = raft_group.lock().unwrap().propose(vec![], data);
+            },
+            2 => {
+                let data = format!("get {}", key).into_bytes();
+                let _ = raft_group.lock().unwrap().propose(vec![], data);
+            },
+            3 => {
+                let data = format!("delete {}", key).into_bytes();
+                let _ = raft_group.lock().unwrap().propose(vec![], data);
+            },
+            4 => {
+                let data = format!("scan {} {}", key, value).into_bytes();
+                let _ = raft_group.lock().unwrap().propose(vec![], data);
+            },
+            _ => {},
         }
     } else if let Some(ref cc) = proposal.conf_change {
         let _ = raft_group.lock().unwrap().propose_conf_change(vec![], cc.clone());
@@ -183,6 +198,9 @@ fn on_ready(
     let store = raft_group.lock().unwrap().raft.raft_log.store.clone();
     // Get the `Ready` with `RawNode::ready` interface.
     let mut ready = raft_group.lock().unwrap().ready();
+    let entry = raft_group.lock().unwrap().raft.raft_log.all_entries();
+    println!("entry: {{ {:?} }}", entry);
+
 
     let handle_messages = |msgs: Vec<Vec<Message>>| {
         for vec_msg in msgs {
@@ -230,19 +248,25 @@ fn on_ready(
                     // For normal proposals, extract the key-value pair and then
                     // insert them into the kv engine.
                     let data = str::from_utf8(&entry.data).unwrap();
-                    let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
-                    let reg2 = Regex::new("delete ([0-9]+)").unwrap();
-                    if let Some(caps) = reg.captures(&data) {
+                    let put_reg = Regex::new("put ([0-9]+) (.+)").unwrap();
+                    let delete_reg = Regex::new("delete ([0-9]+)").unwrap();
+                    // let get_reg = Regex::new("get ([0-9]+)").unwrap();
+
+                    if let Some(caps) = put_reg.captures(&data) {
                         let t1 = caps[1].parse().unwrap();
                         let t2 = caps[2].to_string();
                         println!("insert key: {}, val: {}", t1, t2);
                         kv_pairs.lock().unwrap().insert(t1, t2);
                         // kv_pairs.insert(caps[1].to_string(), caps[2].to_string());
-                    } else if let Some(caps2) = reg2.captures(&data) {
-                        let t1 = caps2[1].parse().unwrap();
+                    } else if let Some(caps) = delete_reg.captures(&data) {
+                        let t1 = caps[1].parse().unwrap();
                         kv_pairs.lock().unwrap().remove(&t1);
                         println!("remove key: {}", t1);
                     }
+                    // else if let Some(caps) = get_reg.captures(&data){
+                    //     let t1 = caps[1].parse().unwrap();
+                    //     println!("get key: {}", t1);
+                    // }
                 }
                 if rn.lock().unwrap().raft.state == StateRole::Leader {
                     // The leader should response to the clients, tell them if their proposals
@@ -257,17 +281,21 @@ fn on_ready(
 
     // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
     // raft logs to the latest position.
-    if let Err(e) = store.wl().append(ready.entries()) {
+    let entries = ready.entries();
+    if let Err(e) = store.wl().append(entries) {
         error!(
             logger,
             "persist raft log fail: {:?}, need to retry or panic", e
         );
+        println!("term: {}",entries[0].term);
+
         return;
     }
 
     if let Some(hs) = ready.hs() {
         // Raft HardState changed, and we need to persist it.
         store.wl().set_hardstate(hs.clone());
+
     }
 
     // Call `RawNode::advance` interface to update position flags in the raft.
@@ -375,6 +403,8 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
                 loop {
                     // Step raft messages.
                     match node.my_mailbox.try_recv() {
+                        // You can call the step function when you receive the Raft messages from other nodes.
+                        // Calling Raft::step will change the memory state of Raft.
                         Ok(msg) => node.step(msg, &logger),
                         Err(TryRecvError::Empty) => break,
                         Err(TryRecvError::Disconnected) => return,
@@ -446,8 +476,5 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
 
 fn main() {
     let proposals = Arc::new(Mutex::new(VecDeque::<Proposal>::new()));
-
-// let a = Arc::clone(&proposals);
-
     start_raft_state_machine(proposals);
 }

@@ -170,7 +170,7 @@ impl KvRaft for KvRaftService {
             get_reply.set_success(false);
             get_reply.set_msg(String::from(ERR_LEADER));
         } else {
-            let (proposal, rx) = Proposal::normal(String::from(""), String::from(""));
+            let (proposal, rx) = Proposal::normal(args.key.to_string(), String::from(""), 2);
             self.proposals.lock().unwrap().push_back(proposal);
 
             if rx.recv().unwrap() {
@@ -204,7 +204,7 @@ impl KvRaft for KvRaftService {
             put_reply.set_success(false);
             put_reply.set_msg(String::from(ERR_LEADER));
         } else {
-            let (proposal, rx) = Proposal::normal(args.key.to_string(), args.val.clone());
+            let (proposal, rx) = Proposal::normal(args.key.to_string(), args.val.clone(), 1);
             self.proposals.lock().unwrap().push_back(proposal);
 
             if rx.recv().unwrap() {
@@ -231,7 +231,7 @@ impl KvRaft for KvRaftService {
             delete_reply.set_success(false);
             delete_reply.set_msg(String::from(ERR_LEADER));
         } else {
-            let (proposal, rx) = Proposal::normal(args.get_key().to_string(), String::from("delete"));
+            let (proposal, rx) = Proposal::normal(args.get_key().to_string(), String::from(""), 3);
             self.proposals.lock().unwrap().push_back(proposal);
 
             if rx.recv().unwrap() {
@@ -265,7 +265,7 @@ impl KvRaft for KvRaftService {
             scan_reply.set_success(false);
             scan_reply.set_msg(String::from(ERR_LEADER));
         } else {
-            let (proposal, rx) = Proposal::normal(String::from(""), String::from(""));
+            let (proposal, rx) = Proposal::normal(args.start_key.to_string(), args.end_key.to_string(), 4);
             self.proposals.lock().unwrap().push_back(proposal);
             if rx.recv().unwrap() {
                 let mut res = Vec::new();

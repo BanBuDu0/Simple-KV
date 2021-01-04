@@ -9,6 +9,8 @@ use grpcio::{ChannelBuilder, EnvBuilder};
 
 use proto::kvraft::{DeleteArgs, GetArgs, PutArgs, ScanArgs};
 use proto::kvraft_grpc::KvRaftClient;
+use std::sync::mpsc::RecvTimeoutError;
+use std::time::Instant;
 
 fn read_line_buffer() -> String {
     // Read one line of input buffer-style
@@ -200,7 +202,14 @@ fn main() {
                 scan_args.set_serial_num(*num);
                 scan_args.set_client_id(CLIENT_ID);
                 scan_args.set_start_key(start_index);
-                scan_args.set_end_key(start_index + 10);
+                if start_index == -1 {
+                    scan_args.set_end_key(-1);
+                }else{
+                    // Scan 10 keys by default
+                    scan_args.set_end_key(start_index + 10);
+
+                }
+
             }
 
             if commands.len() == 3 {
@@ -220,7 +229,6 @@ fn main() {
                 if start_index < 0 {
                     scan_args.set_end_key(-1);
                 } else {
-                    scan_args.set_end_key(start_index + 10);
                     scan_args.set_end_key(end_index);
                 }
             }

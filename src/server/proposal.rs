@@ -12,6 +12,8 @@ pub struct Proposal {
     // If it's proposed, it will be set to the index of the entry.
     pub proposed: u64,
     pub propose_success: SyncSender<bool>,
+    /// 0-none, 1-put, 2-get, 3-delete, 4-scan
+    pub op_type: i64,
 }
 
 impl Proposal {
@@ -28,6 +30,7 @@ impl Proposal {
             transfer_leader: None,
             proposed: 0,
             propose_success: tx,
+            op_type: 0,
         };
         (proposal, rx)
     }
@@ -38,7 +41,7 @@ impl Proposal {
     output: Proposal and Receiver
     When the Proposal is applied, the Receiver will receive the Proposal
     **/
-    pub fn normal(key: String, value: String) -> (Self, Receiver<bool>) {
+    pub fn normal(key: String, value: String, operation_type: i64) -> (Self, Receiver<bool>) {
         let (tx, rx) = mpsc::sync_channel(1);
         let proposal = Proposal {
             normal: Some((key, value)),
@@ -46,6 +49,7 @@ impl Proposal {
             transfer_leader: None,
             proposed: 0,
             propose_success: tx,
+            op_type: operation_type,
         };
         (proposal, rx)
     }
