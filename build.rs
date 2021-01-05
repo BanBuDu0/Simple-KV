@@ -9,6 +9,6 @@ fn main() {
     // }).expect("protoc-rust-grpc");
     let proto_root = "src/proto";
     println!("cargo:rerun-if-changed={}", proto_root);
-    protoc_grpcio::compile_grpc_protos(&["kvraft.proto"], &[proto_root], &proto_root, None)
+    protoc_grpcio::compile_grpc_protos(&["kvraft.proto", "eraftpb.proto"], &[proto_root], &proto_root, None)
         .expect("Failed to compile gRPC definitions!");
 }

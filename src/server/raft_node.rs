@@ -7,7 +7,7 @@ extern crate raft_proto;
 extern crate slog;
 extern crate slog_term;
 
-use std::{str, thread};
+use std::{str, thread, io};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
@@ -23,6 +23,14 @@ use slog::Drain;
 use crate::proposal::Proposal;
 use crate::server::maintain_server;
 use futures_util::__private::Option::Some;
+use std::fs::File;
+use std::fs::OpenOptions;
+use futures::io::Error;
+use std::io::{Write, Read, BufRead};
+extern crate encoding;
+use encoding::all::ASCII;
+use encoding::{Encoding, EncoderTrap};
+use std::path::Path;
 
 mod server;
 mod proposal;
@@ -43,9 +51,13 @@ pub struct Node {
     kv_pairs: Arc<Mutex<HashMap<i64, String>>>,
 }
 
-/**
-Some initialize method
-**/
+fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
+    where P: AsRef<Path>, {
+    let file = File::open(filename)?;
+    Ok(io::BufReader::new(file).lines())
+}
+
+
 impl Node {
     // Create a raft leader only with itself in its configuration.
     fn create_raft_leader(
@@ -65,6 +77,16 @@ impl Node {
         s.mut_metadata().mut_conf_state().voters = vec![1];
         let storage = MemStorage::new();
         // let stora = MemStorage::from()
+        // let mut file =  File::open("entry.data").unwrap();
+        if let Ok(lines) = read_lines(format!("entry{}.data", id)) {
+            // 使用迭代器，返回一个（可选）字符串
+            for line in lines {
+                if let Ok(ip) = line {
+                    println!("{}", ip);
+                }
+            }
+        }
+        // let data = file.;
 
         storage.wl().apply_snapshot(s).unwrap();
 
@@ -198,8 +220,8 @@ fn on_ready(
     let store = raft_group.lock().unwrap().raft.raft_log.store.clone();
     // Get the `Ready` with `RawNode::ready` interface.
     let mut ready = raft_group.lock().unwrap().ready();
-    let entry = raft_group.lock().unwrap().raft.raft_log.all_entries();
-    println!("entry: {{ {:?} }}", entry);
+    // let entry = raft_group.lock().unwrap().raft.raft_log.all_entries();
+    // println!("entry: {{ {:?} }}", entry);
 
 
     let handle_messages = |msgs: Vec<Vec<Message>>| {
@@ -233,17 +255,34 @@ fn on_ready(
 
     let handle_committed_entries =
         |rn: Arc<Mutex<RawNode<MemStorage>>>, committed_entries: Vec<Entry>| {
+            // let data = committed_entries.into
+            let id = raft_group.lock().unwrap().raft.id;
+            let a = format!("entry{}.data",&id);
+            let mut file = match OpenOptions::new().append(true).open(&a) {
+                Ok(f) => {f}
+                Err(_) => {
+                    let f = File::create(&a).unwrap();
+                    f
+                }
+            };
             for entry in committed_entries {
                 if entry.data.is_empty() {
                     // From new elected leaders.
                     continue;
                 }
+
                 if let EntryType::EntryConfChange = entry.get_entry_type() {
                     // For conf change messages, make them effective.
                     let mut cc = ConfChange::default();
                     cc.merge_from_bytes(&entry.data).unwrap();
                     let cs = rn.lock().unwrap().apply_conf_change(&cc).unwrap();
                     store.wl().set_conf_state(cs);
+
+                    // persist entry data
+                    let data = entry.write_to_bytes().unwrap();
+                    file.write_all(&data);
+                    file.write(&"\n".as_bytes());
+                    println!("id: {}, entry: {{ {:?} }}",&id, entry);
                 } else {
                     // For normal proposals, extract the key-value pair and then
                     // insert them into the kv engine.
@@ -251,22 +290,28 @@ fn on_ready(
                     let put_reg = Regex::new("put ([0-9]+) (.+)").unwrap();
                     let delete_reg = Regex::new("delete ([0-9]+)").unwrap();
                     // let get_reg = Regex::new("get ([0-9]+)").unwrap();
+                    let mut flag= false;
 
                     if let Some(caps) = put_reg.captures(&data) {
                         let t1 = caps[1].parse().unwrap();
                         let t2 = caps[2].to_string();
                         println!("insert key: {}, val: {}", t1, t2);
                         kv_pairs.lock().unwrap().insert(t1, t2);
+                        flag = true;
                         // kv_pairs.insert(caps[1].to_string(), caps[2].to_string());
                     } else if let Some(caps) = delete_reg.captures(&data) {
                         let t1 = caps[1].parse().unwrap();
                         kv_pairs.lock().unwrap().remove(&t1);
                         println!("remove key: {}", t1);
+                        flag=true;
                     }
-                    // else if let Some(caps) = get_reg.captures(&data){
-                    //     let t1 = caps[1].parse().unwrap();
-                    //     println!("get key: {}", t1);
-                    // }
+                    if flag{
+                        // persist entry data
+                        let data = entry.write_to_bytes().unwrap();
+                        file.write_all(&data);
+                        file.write(&"\n".as_bytes());
+                        println!("id: {}, entry: {{ {:?} }}",&id, entry);
+                    }
                 }
                 if rn.lock().unwrap().raft.state == StateRole::Leader {
                     // The leader should response to the clients, tell them if their proposals
@@ -414,8 +459,30 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
                 let raft_group = Arc::clone(&node.raft_group);
 
                 if t.elapsed() >= Duration::from_millis(100) {
+                    // let raft_group =  Arc::clone(&raft_group);
+                    let e_term = raft_group.lock().unwrap().raft.term;
+                    let e_vote = raft_group.lock().unwrap().raft.term;
+
                     raft_group.lock().unwrap().tick();
                     t = Instant::now();
+                    // let raft_group =  Arc::clone(&raft_group);
+
+                    let a_term = raft_group.lock().unwrap().raft.term;
+                    let a_vote = raft_group.lock().unwrap().raft.term;
+                    if e_term != a_term{
+                        //TODO persist
+                        info!(
+                            logger,
+                            "old term {} is differ from new term {}",e_term, a_term
+                        );
+                    }
+                    if e_vote != a_vote{
+                        //TODO persist
+                        info!(
+                            logger,
+                            "old vote {} is differ from new vote {}",e_vote, a_vote
+                        );
+                    }
                 }
 
                 // Let the leader pick pending proposals from the global queue.
@@ -425,7 +492,7 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
                     for p in proposals.iter_mut().skip_while(|p| p.proposed > 0) {
                         info!(
                             logger,
-                            "Get a proposal and I will propose it  {{ {:?} }}", p
+                            "{} Get a proposal and I will propose it  {{ {:?} }}", raft_group.lock().unwrap().raft.id, p
                         );
                         propose(Arc::clone(&raft_group), p);
                     }
@@ -476,5 +543,18 @@ pub fn start_raft_state_machine(proposals: Arc<Mutex<VecDeque<Proposal>>>) {
 
 fn main() {
     let proposals = Arc::new(Mutex::new(VecDeque::<Proposal>::new()));
+    // match File::open("entry.data"){
+    //     Ok(_) => {}
+    //     Err(_) => {
+    //         File::create("entry.data").unwrap();
+    //     }
+    // }
+    // match File::open("state.data"){
+    //     Ok(_) => {}
+    //     Err(_) => {
+    //         File::create("state.data").unwrap();
+    //     }
+    // }
+
     start_raft_state_machine(proposals);
 }

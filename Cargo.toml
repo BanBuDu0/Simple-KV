@@ -20,6 +20,10 @@ path = "src/server/raft_node.rs"
 name = "client"
 path = "src/client.rs"
 
+[[bench]]
+name = "benches"
+harness = false
+
 
 [dependencies]
 futures = { version = "0.3", features = ["thread-pool", "compat"] }
@@ -42,6 +46,7 @@ slog-term = "2.4.0"
 raft = "0.6.0-alpha"
 raft-proto = "0.6.0-alpha"
 encoding = "0.2.33"
+criterion = "0.3"
 
 [patch.crates-io]
 raft = { git = "https://github.com/tikv/raft-rs", branch = "master", default-features = false }
