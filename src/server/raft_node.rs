@@ -168,11 +168,11 @@ fn propose(raft_group: Arc<Mutex<RawNode<MemStorage>>>, proposal: &mut Proposal)
                 let _ = raft_group.lock().unwrap().propose(vec![], data);
             },
             2 => {
-                let data = format!("get {}", key).into_bytes();
+                let data = format!("get {} {}", key, "").into_bytes();
                 let _ = raft_group.lock().unwrap().propose(vec![], data);
             },
             3 => {
-                let data = format!("delete {}", key).into_bytes();
+                let data = format!("del {} {}", key, "").into_bytes();
                 let _ = raft_group.lock().unwrap().propose(vec![], data);
             },
             4 => {
@@ -288,7 +288,7 @@ fn on_ready(
                     // insert them into the kv engine.
                     let data = str::from_utf8(&entry.data).unwrap();
                     let put_reg = Regex::new("put ([0-9]+) (.+)").unwrap();
-                    let delete_reg = Regex::new("delete ([0-9]+)").unwrap();
+                    let delete_reg = Regex::new("del ([0-9]+)").unwrap();
                     // let get_reg = Regex::new("get ([0-9]+)").unwrap();
                     let mut flag= false;
 
